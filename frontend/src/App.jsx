@@ -88,6 +88,16 @@ export default function App() {
     ? new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
     : null
 
+  // Trade box para vista simple: entrada + TP + SL calculados por la señal
+  const tradeBox = (data?.signal?.target && data.signal.overall !== 'NEUTRAL')
+    ? {
+        entry:     data.candles[data.candles.length - 1].close,
+        tp:        data.signal.target.tp,
+        sl:        data.signal.target.sl,
+        direction: data.signal.target.direction,
+      }
+    : null
+
   return (
     <div style={{ background: '#0d0f1a', minHeight: '100vh', color: '#e2e8f0', fontFamily: 'Segoe UI, sans-serif' }}>
 
@@ -167,6 +177,7 @@ export default function App() {
                   indicators={data.indicators}
                   markers={data.markers}
                   interval={interval}
+                  tradeBox={tradeBox}
                 />
                 <ScoreOverlay signal={data.signal} />
               </>
