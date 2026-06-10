@@ -23,6 +23,10 @@ const IND_LABELS = {
   NORMAL:        { label: 'Normal',       color: '#718096' },
   POSITIVO:      { label: 'Positivo',     color: '#26a69a' },
   NEGATIVO:      { label: 'Negativo',     color: '#ef5350' },
+  RUPTURA_ALCISTA:   { label: 'Ruptura Alcista',  color: '#26a69a' },
+  RUPTURA_BAJISTA:   { label: 'Ruptura Bajista',  color: '#ef5350' },
+  CERCA_SOPORTE:     { label: 'Cerca Soporte',    color: '#4caf50' },
+  CERCA_RESISTENCIA: { label: 'Cerca Resistencia',color: '#ff9800' },
   GOLDEN_CROSS:  { label: 'Cruz Dorada',  color: '#FFD700' },
   DEATH_CROSS:   { label: 'Cruz Muerte',  color: '#9e2020' },
   DIV_ALCISTA:   { label: 'Div. Alcista', color: '#26a69a' },
@@ -176,6 +180,32 @@ export default function SignalPanel({ signal, lastUpdate }) {
               );
             })}
           </div>
+        </div>
+      )}
+
+      {/* Soporte y Resistencia */}
+      {details.sr && (
+        <div style={{ ...rowStyle, flexDirection: 'column', alignItems: 'flex-start', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+            <div style={nameStyle}>Soporte / Resistencia</div>
+            {details.sr.signal !== 'NEUTRAL' && <Badge signal={details.sr.signal} />}
+          </div>
+          {details.sr.resistances?.slice(0, 2).map((r, i) => (
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+              <span style={{ fontSize: '0.72rem', color: '#ef535090' }}>
+                R{i + 1} — ${r.price.toLocaleString('en-US', { maximumFractionDigits: 2 })}
+              </span>
+              <span style={{ fontSize: '0.68rem', color: '#4a5568' }}>{r.touches}x tocado</span>
+            </div>
+          ))}
+          {details.sr.supports?.slice(0, 2).map((s, i) => (
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+              <span style={{ fontSize: '0.72rem', color: '#26a69a90' }}>
+                S{i + 1} — ${s.price.toLocaleString('en-US', { maximumFractionDigits: 2 })}
+              </span>
+              <span style={{ fontSize: '0.68rem', color: '#4a5568' }}>{s.touches}x tocado</span>
+            </div>
+          ))}
         </div>
       )}
 

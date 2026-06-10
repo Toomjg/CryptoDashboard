@@ -157,6 +157,66 @@ function detectDivergence(candles, oscillator, window = 60) {
   return null;
 }
 
+// ─── Soporte y Resistencia ───────────────────────────────────────────────────
+
+// Agrupa niveles cercanos (dentro del % de tolerancia) y cuenta cuántas veces fue tocado
+export function findSupportResistance(candles, lookback = 150) {
+  const recent  = candles.slice(-lookback);
+  const highs   = recent.map(c => c.high);
+  const lows    = recent.map(c => c.low);
+
+  const pivH = pivotHighs(highs, 4);
+  const pivL = pivotLows(lows,   4);
+
+  const raw = [
+    ...pivH.map(i => highs[i]),
+    ...pivL.map(i => lows[i]),
+  ];
+
+  // Clusterizar niveles dentro del 1%
+  const clusters = [];
+  for (const price of raw) {
+    const found = clusters.find(c => Math.abs(c.price - price) / price < 0.01);
+    if (found) { found.touches++; found.price = (found.price + price) / 2; }
+    else         clusters.push({ price, touches: 1 });
+  }
+
+  const significant = clusters
+    .filter(l => l.touches >= 2)
+    .sort((a, b) => b.touches - a.touches);
+
+  const cur = candles[candles.length - 1].close;
+
+  const supports    = significant.filter(l => l.price < cur * 0.999)
+                                 .sort((a, b) => b.price - a.price).slice(0, 4);
+  const resistances = significant.filter(l => l.price > cur * 1.001)
+                                 .sort((a, b) => a.price - b.price).slice(0, 4);
+
+  return { supports, resistances };
+}
+
+function analyzeSR(currentPrice, prevPrice, { supports, resistances }) {
+  const NEAR = 0.012; // 1.2% de cercanía
+
+  // Ruptura de resistencia → alcista fuerte
+  const brokenR = resistances.find(r => prevPrice < r.price && currentPrice > r.price);
+  if (brokenR) return { score: 2, signal: 'RUPTURA_ALCISTA' };
+
+  // Ruptura de soporte → bajista fuerte
+  const brokenS = supports.find(s => prevPrice > s.price && currentPrice < s.price);
+  if (brokenS) return { score: -2, signal: 'RUPTURA_BAJISTA' };
+
+  // Precio rebotando en soporte
+  const nearS = supports.find(s => Math.abs(currentPrice - s.price) / currentPrice < NEAR);
+  if (nearS) return { score: 1, signal: 'CERCA_SOPORTE' };
+
+  // Precio tocando resistencia
+  const nearR = resistances.find(r => Math.abs(currentPrice - r.price) / currentPrice < NEAR);
+  if (nearR) return { score: -1, signal: 'CERCA_RESISTENCIA' };
+
+  return { score: 0, signal: 'NEUTRAL' };
+}
+
 // ─── Patrones de velas ───────────────────────────────────────────────────────
 
 export function detectCandlePatterns(candles) {
@@ -402,7 +462,18 @@ export function generateSignal(candles) {
     details.patterns = patterns;
   }
 
-  return { overall: scoreToOverall(score), score, maxScore: 18, details };
+  // Soporte y Resistencia: -2 a +2
+  const srData   = findSupportResistance(candles);
+  const srResult = analyzeSR(closes[n], closes[n - 1], srData);
+  score += srResult.score;
+  details.sr = {
+    signal:      srResult.signal,
+    score:       srResult.score,
+    supports:    srData.supports,
+    resistances: srData.resistances,
+  };
+
+  return { overall: scoreToOverall(score), score, maxScore: 20, details };
 }
 
 // ─── Series para gráficos ─────────────────────────────────────────────────────

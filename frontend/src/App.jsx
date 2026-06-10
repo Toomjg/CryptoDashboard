@@ -102,7 +102,7 @@ export default function App() {
             {loading && <Loader text="Cargando datos..." />}
             {error   && <ErrorMsg text={error} />}
             {!loading && !error && data && (
-              <CandleChart candles={data.candles} indicators={data.indicators} />
+              <CandleChart candles={data.candles} indicators={data.indicators} sr={data.signal.details.sr} />
             )}
           </div>
 

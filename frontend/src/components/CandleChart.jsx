@@ -5,7 +5,7 @@ const CHART_BG   = '#131722'
 const GRID_COLOR = '#1e2130'
 const TEXT_COLOR = '#b2b5be'
 
-export default function CandleChart({ candles, indicators }) {
+export default function CandleChart({ candles, indicators, sr }) {
   const containerRef = useRef(null)
   const chartRef     = useRef(null)
 
@@ -63,6 +63,30 @@ export default function CandleChart({ candles, indicators }) {
       }
     }
 
+    // Líneas de soporte y resistencia
+    if (sr) {
+      for (const s of sr.supports) {
+        candleSeries.createPriceLine({
+          price: s.price,
+          color: '#26a69a80',
+          lineWidth: s.touches >= 4 ? 2 : 1,
+          lineStyle: 2,
+          axisLabelVisible: true,
+          title: `S ${s.touches}x`,
+        })
+      }
+      for (const r of sr.resistances) {
+        candleSeries.createPriceLine({
+          price: r.price,
+          color: '#ef535080',
+          lineWidth: r.touches >= 4 ? 2 : 1,
+          lineStyle: 2,
+          axisLabelVisible: true,
+          title: `R ${r.touches}x`,
+        })
+      }
+    }
+
     chart.timeScale().fitContent()
     chartRef.current = chart
 
@@ -81,7 +105,7 @@ export default function CandleChart({ candles, indicators }) {
       chart.remove()
       chartRef.current = null
     }
-  }, [candles, indicators])
+  }, [candles, indicators, sr])
 
   return <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
 }
