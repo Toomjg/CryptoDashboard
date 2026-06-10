@@ -13,12 +13,23 @@ const INTERVALS = [
   { value: '1d',  label: '1D'  },
 ]
 
+// Mapeo overall → número 1-10 + color (para vista simple)
+const SCORE_MAP = {
+  VENTA_FUERTE:  { num: 1,  color: '#b71c1c', label: 'VENTA FUERTE'  },
+  VENTA:         { num: 3,  color: '#ef5350', label: 'VENTA'         },
+  VENTA_DEBIL:   { num: 4,  color: '#ff9800', label: 'VENTA DÉBIL'   },
+  NEUTRAL:       { num: 5,  color: '#9e9e9e', label: 'NEUTRAL'       },
+  COMPRA_DEBIL:  { num: 6,  color: '#8bc34a', label: 'COMPRA DÉBIL'  },
+  COMPRA:        { num: 8,  color: '#4caf50', label: 'COMPRA'        },
+  COMPRA_FUERTE: { num: 10, color: '#26a69a', label: 'COMPRA FUERTE' },
+}
+
 function fmt(n, decimals = 2) {
   if (n === undefined || n === null) return '—'
   return n.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
 }
 
-function PriceHeader({ symbol, livePrice }) {
+function PriceHeader({ livePrice }) {
   if (!livePrice) return null
   const pos = livePrice.change >= 0
   return (
@@ -41,9 +52,41 @@ function PriceHeader({ symbol, livePrice }) {
   )
 }
 
+// Overlay con número 1-10 y label de señal para la vista simple
+function ScoreOverlay({ signal }) {
+  if (!signal) return null
+  const cfg = SCORE_MAP[signal.overall] || SCORE_MAP.NEUTRAL
+  return (
+    <div style={{
+      position: 'absolute', top: 14, left: 14, zIndex: 10,
+      background: '#13172295', backdropFilter: 'blur(6px)',
+      borderRadius: 14, padding: '10px 20px',
+      border: `2px solid ${cfg.color}55`,
+      display: 'flex', alignItems: 'center', gap: '1rem',
+      pointerEvents: 'none',
+    }}>
+      <span style={{
+        fontSize: '3.5rem', fontWeight: 900, color: cfg.color,
+        lineHeight: 1, fontVariantNumeric: 'tabular-nums',
+      }}>
+        {cfg.num}
+      </span>
+      <div>
+        <div style={{ fontSize: '0.62rem', color: '#718096', marginBottom: 3, letterSpacing: 1 }}>
+          SEÑAL
+        </div>
+        <div style={{ fontSize: '0.85rem', fontWeight: 800, color: cfg.color, letterSpacing: 0.5 }}>
+          {cfg.label}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
   const [symbol,   setSymbol]   = useState('BTCUSDT')
   const [interval, setInterval] = useState('1h')
+  const [view,     setView]     = useState('completo')
   const { data, loading, error, livePrice } = useMarketData(symbol, interval)
 
   const lastUpdate = data
@@ -52,27 +95,46 @@ export default function App() {
 
   return (
     <div style={{ background: '#0d0f1a', minHeight: '100vh', color: '#e2e8f0', fontFamily: 'Segoe UI, sans-serif' }}>
-      {/* Navbar */}
+
+      {/* ─── Navbar ─────────────────────────────────────────────────────── */}
       <div style={{
         background: '#131722', borderBottom: '1px solid #1e2130',
         padding: '0.7rem 1.5rem', display: 'flex', alignItems: 'center',
         justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+
           <span style={{ fontWeight: 800, fontSize: '1.1rem', color: '#2196F3' }}>
             Crypto Dashboard
           </span>
 
-          {/* Symbol selector */}
-          <select
-            value={symbol}
-            onChange={e => setSymbol(e.target.value)}
-            style={selectStyle}
-          >
+          {/* Toggle Simple / Completo */}
+          <div style={{ display: 'flex', gap: 3, background: '#0d0f1a', borderRadius: 8, padding: 3 }}>
+            {[
+              { value: 'simple',   label: 'Simple'   },
+              { value: 'completo', label: 'Completo' },
+            ].map(v => (
+              <button
+                key={v.value}
+                onClick={() => setView(v.value)}
+                style={{
+                  ...btnStyle,
+                  background: view === v.value ? '#9c27b0' : 'transparent',
+                  color:      view === v.value ? '#fff'    : '#718096',
+                  padding: '4px 14px',
+                }}
+              >
+                {v.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Symbol */}
+          <select value={symbol} onChange={e => setSymbol(e.target.value)} style={selectStyle}>
             {SYMBOLS.map(s => <option key={s} value={s}>{s.replace('USDT', '/USDT')}</option>)}
           </select>
 
-          {/* Interval tabs */}
+          {/* Interval */}
           <div style={{ display: 'flex', gap: 4 }}>
             {INTERVALS.map(iv => (
               <button
@@ -81,7 +143,7 @@ export default function App() {
                 style={{
                   ...btnStyle,
                   background: interval === iv.value ? '#2196F3' : '#1e2130',
-                  color: interval === iv.value ? '#fff' : '#718096',
+                  color:      interval === iv.value ? '#fff'    : '#718096',
                 }}
               >
                 {iv.label}
@@ -90,55 +152,88 @@ export default function App() {
           </div>
         </div>
 
-        <PriceHeader symbol={symbol} livePrice={livePrice} />
+        <PriceHeader livePrice={livePrice} />
       </div>
 
-      {/* Main content */}
-      <div style={{ padding: '0.75rem', height: 'calc(100vh - 56px)', display: 'flex', gap: '0.75rem' }}>
-        {/* Charts column */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem', minWidth: 0 }}>
-          {/* Candle chart */}
-          <div style={{ flex: 3, background: '#131722', borderRadius: 10, border: '1px solid #1e2130', overflow: 'hidden' }}>
+      {/* ─── Vista Simple ────────────────────────────────────────────────── */}
+      {view === 'simple' && (
+        <div style={{ padding: '0.75rem', height: 'calc(100vh - 56px)' }}>
+          <div style={{
+            position: 'relative', height: '100%',
+            background: '#131722', borderRadius: 10,
+            border: '1px solid #1e2130', overflow: 'hidden',
+          }}>
             {loading && <Loader text="Cargando datos..." />}
             {error   && <ErrorMsg text={error} />}
             {!loading && !error && data && (
-              <CandleChart candles={data.candles} indicators={data.indicators} sr={data.signal.details.sr} markers={data.markers} interval={interval} />
-            )}
-          </div>
-
-          {/* RSI + MACD */}
-          <div style={{ flex: 2, background: '#131722', borderRadius: 10, border: '1px solid #1e2130', overflow: 'hidden' }}>
-            {!loading && !error && data && (
-              <RsiChart
-                rsiData={data.indicators.rsi}
-                macdData={data.indicators.macd}
-                macdSignalData={data.indicators.macdSignal}
-                macdHistogram={data.indicators.macdHistogram}
-              />
+              <>
+                <CandleChart
+                  candles={data.candles}
+                  indicators={data.indicators}
+                  sr={data.signal.details.sr}
+                  markers={data.markers}
+                  interval={interval}
+                />
+                <ScoreOverlay signal={data.signal} />
+              </>
             )}
           </div>
         </div>
+      )}
 
-        {/* Panel derecho: señal + noticias */}
-        <div style={{ width: '260px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem', overflowY: 'auto' }}>
-          {!loading && !error && data && (
-            <>
-              <SignalPanel signal={data.signal} lastUpdate={lastUpdate} />
-              <NewsPanel news={data.news} />
-            </>
-          )}
-          {loading && (
-            <div style={{
-              background: '#131722', border: '1px solid #1e2130',
-              borderRadius: 12, flex: 1, display: 'flex',
-              alignItems: 'center', justifyContent: 'center',
-              color: '#4a5568', fontSize: '0.85rem'
-            }}>
-              Cargando...
+      {/* ─── Vista Completa ──────────────────────────────────────────────── */}
+      {view === 'completo' && (
+        <div style={{ padding: '0.75rem', height: 'calc(100vh - 56px)', display: 'flex', gap: '0.75rem' }}>
+
+          {/* Columna de gráficos */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem', minWidth: 0 }}>
+            <div style={{ flex: 3, background: '#131722', borderRadius: 10, border: '1px solid #1e2130', overflow: 'hidden' }}>
+              {loading && <Loader text="Cargando datos..." />}
+              {error   && <ErrorMsg text={error} />}
+              {!loading && !error && data && (
+                <CandleChart
+                  candles={data.candles}
+                  indicators={data.indicators}
+                  sr={data.signal.details.sr}
+                  markers={data.markers}
+                  interval={interval}
+                />
+              )}
             </div>
-          )}
+
+            <div style={{ flex: 2, background: '#131722', borderRadius: 10, border: '1px solid #1e2130', overflow: 'hidden' }}>
+              {!loading && !error && data && (
+                <RsiChart
+                  rsiData={data.indicators.rsi}
+                  macdData={data.indicators.macd}
+                  macdSignalData={data.indicators.macdSignal}
+                  macdHistogram={data.indicators.macdHistogram}
+                />
+              )}
+            </div>
+          </div>
+
+          {/* Panel derecho */}
+          <div style={{ width: '260px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem', overflowY: 'auto' }}>
+            {!loading && !error && data && (
+              <>
+                <SignalPanel signal={data.signal} lastUpdate={lastUpdate} />
+                <NewsPanel news={data.news} />
+              </>
+            )}
+            {loading && (
+              <div style={{
+                background: '#131722', border: '1px solid #1e2130',
+                borderRadius: 12, flex: 1, display: 'flex',
+                alignItems: 'center', justifyContent: 'center',
+                color: '#4a5568', fontSize: '0.85rem',
+              }}>
+                Cargando...
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
