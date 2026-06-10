@@ -23,6 +23,10 @@ const IND_LABELS = {
   NORMAL:        { label: 'Normal',       color: '#718096' },
   POSITIVO:      { label: 'Positivo',     color: '#26a69a' },
   NEGATIVO:      { label: 'Negativo',     color: '#ef5350' },
+  GOLDEN_CROSS:  { label: 'Cruz Dorada',  color: '#FFD700' },
+  DEATH_CROSS:   { label: 'Cruz Muerte',  color: '#9e2020' },
+  DIV_ALCISTA:   { label: 'Div. Alcista', color: '#26a69a' },
+  DIV_BAJISTA:   { label: 'Div. Bajista', color: '#ef5350' },
 }
 
 function Badge({ signal }) {
@@ -144,6 +148,45 @@ export default function SignalPanel({ signal, lastUpdate }) {
             </div>
           </div>
           <Badge signal={details.volume.signal} />
+        </div>
+      )}
+
+      {/* Golden / Death Cross */}
+      {details.cross && (
+        <div style={rowStyle}>
+          <div>
+            <div style={nameStyle}>Cruce EMA 50/200</div>
+            <div style={{ fontSize: '0.72rem', color: '#718096' }}>
+              hace {details.cross.age} vela{details.cross.age !== 1 ? 's' : ''}
+            </div>
+          </div>
+          <Badge signal={details.cross.signal} />
+        </div>
+      )}
+
+      {/* Divergencia RSI */}
+      {details.divRsi && (
+        <div style={rowStyle}>
+          <div>
+            <div style={nameStyle}>Divergencia RSI</div>
+            <div style={{ fontSize: '0.72rem', color: '#718096' }}>
+              precio vs RSI
+            </div>
+          </div>
+          <Badge signal={details.divRsi.signal} />
+        </div>
+      )}
+
+      {/* Divergencia MACD */}
+      {details.divMacd && (
+        <div style={rowStyle}>
+          <div>
+            <div style={nameStyle}>Divergencia MACD</div>
+            <div style={{ fontSize: '0.72rem', color: '#718096' }}>
+              precio vs MACD
+            </div>
+          </div>
+          <Badge signal={details.divMacd.signal} />
         </div>
       )}
 

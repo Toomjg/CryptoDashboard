@@ -1,3 +1,5 @@
+// ─── Indicadores base ────────────────────────────────────────────────────────
+
 export function ema(values, period) {
   const k = 2 / (period + 1);
   const result = new Array(values.length).fill(null);
@@ -58,13 +60,112 @@ export function volumeAvg(volumes, period = 20) {
   return result;
 }
 
+// ─── Estrategias ─────────────────────────────────────────────────────────────
+
+// Encuentra mínimos locales (un pivot low es menor que los 'lookback' vecinos)
+function pivotLows(values, lookback = 3) {
+  const result = [];
+  for (let i = lookback; i < values.length - lookback; i++) {
+    let ok = true;
+    for (let j = i - lookback; j <= i + lookback; j++) {
+      if (j !== i && values[j] <= values[i]) { ok = false; break; }
+    }
+    if (ok) result.push(i);
+  }
+  return result;
+}
+
+// Encuentra máximos locales
+function pivotHighs(values, lookback = 3) {
+  const result = [];
+  for (let i = lookback; i < values.length - lookback; i++) {
+    let ok = true;
+    for (let j = i - lookback; j <= i + lookback; j++) {
+      if (j !== i && values[j] >= values[i]) { ok = false; break; }
+    }
+    if (ok) result.push(i);
+  }
+  return result;
+}
+
+// Golden Cross / Death Cross: EMA 50 cruzando EMA 200
+function detectEMACross(ema50v, ema200v, lookback = 10) {
+  const n = ema50v.length - 1;
+  for (let i = n; i >= Math.max(1, n - lookback); i--) {
+    if (ema50v[i] === null || ema200v[i] === null) continue;
+    if (ema50v[i - 1] === null || ema200v[i - 1] === null) continue;
+    const age = n - i;
+    // Golden Cross: EMA50 cruza por encima de EMA200
+    if (ema50v[i - 1] <= ema200v[i - 1] && ema50v[i] > ema200v[i]) {
+      return { type: 'GOLDEN', age, score: age <= 3 ? 2 : 1 };
+    }
+    // Death Cross: EMA50 cruza por debajo de EMA200
+    if (ema50v[i - 1] >= ema200v[i - 1] && ema50v[i] < ema200v[i]) {
+      return { type: 'DEATH', age, score: age <= 3 ? -2 : -1 };
+    }
+  }
+  return null;
+}
+
+// Divergencia regular entre precio y un oscilador (RSI o MACD)
+// Usa los últimos 'window' candles y require el pivot más reciente en los últimos 8
+function detectDivergence(candles, oscillator, window = 60) {
+  const n = candles.length;
+  const start = Math.max(0, n - window);
+
+  const lows  = candles.slice(start).map(c => c.low);
+  const highs = candles.slice(start).map(c => c.high);
+  const osc   = oscillator.slice(start);
+  const recent = lows.length - 8; // el pivot tiene que estar en los últimos 8
+
+  // Divergencia alcista: precio hace mínimo más bajo, oscilador hace mínimo más alto
+  const pLows = pivotLows(lows);
+  const recentLows = pLows.filter(i => i >= recent);
+  if (recentLows.length > 0) {
+    const idx2 = recentLows[recentLows.length - 1];
+    const prevLows = pLows.filter(i => i < idx2);
+    if (prevLows.length > 0) {
+      const idx1 = prevLows[prevLows.length - 1];
+      if (
+        osc[idx1] !== null && osc[idx2] !== null &&
+        lows[idx2] < lows[idx1] &&   // precio: mínimo más bajo
+        osc[idx2]  > osc[idx1]        // oscilador: mínimo más alto
+      ) {
+        return { type: 'ALCISTA', score: 2 };
+      }
+    }
+  }
+
+  // Divergencia bajista: precio hace máximo más alto, oscilador hace máximo más bajo
+  const pHighs = pivotHighs(highs);
+  const recentHighs = pHighs.filter(i => i >= recent);
+  if (recentHighs.length > 0) {
+    const idx2 = recentHighs[recentHighs.length - 1];
+    const prevHighs = pHighs.filter(i => i < idx2);
+    if (prevHighs.length > 0) {
+      const idx1 = prevHighs[prevHighs.length - 1];
+      if (
+        osc[idx1] !== null && osc[idx2] !== null &&
+        highs[idx2] > highs[idx1] &&  // precio: máximo más alto
+        osc[idx2]   < osc[idx1]        // oscilador: máximo más bajo
+      ) {
+        return { type: 'BAJISTA', score: -2 };
+      }
+    }
+  }
+
+  return null;
+}
+
+// ─── Score general ────────────────────────────────────────────────────────────
+
 export function scoreToOverall(score) {
-  if      (score >= 7)  return 'COMPRA_FUERTE';
-  else if (score >= 4)  return 'COMPRA';
-  else if (score >= 1)  return 'COMPRA_DEBIL';
-  else if (score <= -7) return 'VENTA_FUERTE';
-  else if (score <= -4) return 'VENTA';
-  else if (score <= -1) return 'VENTA_DEBIL';
+  if      (score >= 9)  return 'COMPRA_FUERTE';
+  else if (score >= 5)  return 'COMPRA';
+  else if (score >= 2)  return 'COMPRA_DEBIL';
+  else if (score <= -9) return 'VENTA_FUERTE';
+  else if (score <= -5) return 'VENTA';
+  else if (score <= -2) return 'VENTA_DEBIL';
   else                  return 'NEUTRAL';
 }
 
@@ -88,7 +189,7 @@ export function generateSignal(candles) {
   const curRsi = rsiV[n];
   if (curRsi !== null) {
     let s = 0, sig = 'NEUTRAL';
-    if (curRsi < 30)      { s = 3;  sig = 'SOBREVENTA'; }
+    if      (curRsi < 30) { s = 3;  sig = 'SOBREVENTA'; }
     else if (curRsi < 40) { s = 2;  sig = 'COMPRA'; }
     else if (curRsi < 45) { s = 1;  sig = 'DEBIL_COMPRA'; }
     else if (curRsi > 70) { s = -3; sig = 'SOBRECOMPRA'; }
@@ -150,8 +251,50 @@ export function generateSignal(candles) {
     details.volume = { ratio: +ratio.toFixed(2), signal: sig, score: s };
   }
 
-  return { overall: scoreToOverall(score), score, maxScore: 10, details };
+  // Golden / Death Cross EMA50 x EMA200: -2 a +2
+  if (ema50v[n] !== null && ema200v[n] !== null) {
+    const cross = detectEMACross(ema50v, ema200v, 10);
+    if (cross) {
+      score += cross.score;
+      details.cross = {
+        type:  cross.type,
+        age:   cross.age,
+        score: cross.score,
+        signal: cross.type === 'GOLDEN' ? 'GOLDEN_CROSS' : 'DEATH_CROSS',
+      };
+    }
+  }
+
+  // Divergencia RSI: -2 a +2
+  if (rsiV[n] !== null) {
+    const divRsi = detectDivergence(candles, rsiV, 60);
+    if (divRsi) {
+      score += divRsi.score;
+      details.divRsi = {
+        type:   divRsi.type,
+        score:  divRsi.score,
+        signal: divRsi.type === 'ALCISTA' ? 'DIV_ALCISTA' : 'DIV_BAJISTA',
+      };
+    }
+  }
+
+  // Divergencia MACD: -2 a +2
+  if (macdLine[n] !== null) {
+    const divMacd = detectDivergence(candles, macdLine, 60);
+    if (divMacd) {
+      score += divMacd.score;
+      details.divMacd = {
+        type:   divMacd.type,
+        score:  divMacd.score,
+        signal: divMacd.type === 'ALCISTA' ? 'DIV_ALCISTA' : 'DIV_BAJISTA',
+      };
+    }
+  }
+
+  return { overall: scoreToOverall(score), score, maxScore: 15, details };
 }
+
+// ─── Series para gráficos ─────────────────────────────────────────────────────
 
 export function toSeries(values, times) {
   return values.map((v, i) => v !== null ? { time: times[i], value: v } : null).filter(Boolean);
