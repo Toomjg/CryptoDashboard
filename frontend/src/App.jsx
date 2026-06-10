@@ -15,13 +15,13 @@ const INTERVALS = [
 
 // Mapeo overall → número 1-10 + color (para vista simple)
 const SCORE_MAP = {
-  VENTA_FUERTE:  { num: 1,  color: '#b71c1c', label: 'VENTA FUERTE'  },
-  VENTA:         { num: 3,  color: '#ef5350', label: 'VENTA'         },
-  VENTA_DEBIL:   { num: 4,  color: '#ff9800', label: 'VENTA DÉBIL'   },
-  NEUTRAL:       { num: 5,  color: '#9e9e9e', label: 'NEUTRAL'       },
-  COMPRA_DEBIL:  { num: 6,  color: '#8bc34a', label: 'COMPRA DÉBIL'  },
-  COMPRA:        { num: 8,  color: '#4caf50', label: 'COMPRA'        },
-  COMPRA_FUERTE: { num: 10, color: '#26a69a', label: 'COMPRA FUERTE' },
+  VENTA_FUERTE:  { num: 1, color: '#b71c1c', label: 'VENTA FUERTE'  },
+  VENTA:         { num: 2, color: '#ef5350', label: 'VENTA'         },
+  VENTA_DEBIL:   { num: 2, color: '#ff9800', label: 'VENTA DÉBIL'   },
+  NEUTRAL:       { num: 3, color: '#9e9e9e', label: 'NEUTRAL'       },
+  COMPRA_DEBIL:  { num: 4, color: '#8bc34a', label: 'COMPRA DÉBIL'  },
+  COMPRA:        { num: 4, color: '#4caf50', label: 'COMPRA'        },
+  COMPRA_FUERTE: { num: 5, color: '#26a69a', label: 'COMPRA FUERTE' },
 }
 
 function fmt(n, decimals = 2) {

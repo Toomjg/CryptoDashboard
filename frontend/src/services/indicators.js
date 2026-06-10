@@ -537,28 +537,35 @@ export function generateMarkers(candles, interval) {
     }
 
     if (i - lastIdx >= 10) {
-      // Mapear score absoluto (1-9) → fuerza 1-10
-      const strength = Math.max(1, Math.min(10, Math.round(Math.abs(score) * 10 / 9)))
-      if (score >= threshold) {
-        markers.push({
-          time:     times[i],
-          position: 'belowBar',
-          color:    '#FFD700',
-          shape:    'arrowUp',
-          size:     isShortTerm ? 1 : 2,
-          text:     String(strength),
-        })
-        lastIdx = i
-      } else if (score <= -threshold) {
-        markers.push({
-          time:     times[i],
-          position: 'aboveBar',
-          color:    '#FFD700',
-          shape:    'arrowDown',
-          size:     isShortTerm ? 1 : 2,
-          text:     String(strength),
-        })
-        lastIdx = i
+      // Fuerza 1-5: score 5→1, 6→2, 7→3, 8→4, 9→5
+      const strength = Math.max(1, Math.min(5, Math.abs(score) - 4))
+      const isBuy    = score >= threshold
+      const isSell   = score <= -threshold
+
+      if (isBuy || isSell) {
+        // Anti-señales-falsas en corto plazo:
+        // 1. Histograma MACD debe estar acelerando en la dirección de la señal
+        // 2. La vela debe cerrar en la misma dirección (no doji ni contra-tendencia)
+        let valid = true
+        if (isShortTerm && ml !== null && sl !== null && ml0 !== null && sl0 !== null) {
+          const hist     = ml  - sl
+          const hist0    = ml0 - sl0
+          const bullCandle = closes[i] >= candles[i].open
+          if (isBuy  && (hist <= hist0 || !bullCandle)) valid = false
+          if (isSell && (hist >= hist0 ||  bullCandle)) valid = false
+        }
+
+        if (valid) {
+          markers.push({
+            time:     times[i],
+            position: isBuy ? 'belowBar' : 'aboveBar',
+            color:    '#FFD700',
+            shape:    isBuy ? 'arrowUp' : 'arrowDown',
+            size:     isShortTerm ? 1 : 2,
+            text:     String(strength),
+          })
+          lastIdx = i
+        }
       }
     }
   }
