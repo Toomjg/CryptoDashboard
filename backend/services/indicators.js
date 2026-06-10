@@ -181,4 +181,14 @@ function generateSignal(candles) {
   return { overall, score, maxScore: 10, details };
 }
 
-module.exports = { ema, rsi, macd, volumeAvg, generateSignal };
+function scoreToOverall(score) {
+  if      (score >= 7)  return 'COMPRA_FUERTE';
+  else if (score >= 4)  return 'COMPRA';
+  else if (score >= 1)  return 'COMPRA_DEBIL';
+  else if (score <= -7) return 'VENTA_FUERTE';
+  else if (score <= -4) return 'VENTA';
+  else if (score <= -1) return 'VENTA_DEBIL';
+  else                  return 'NEUTRAL';
+}
+
+module.exports = { ema, rsi, macd, volumeAvg, generateSignal, scoreToOverall };

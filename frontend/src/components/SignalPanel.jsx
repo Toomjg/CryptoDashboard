@@ -21,6 +21,8 @@ const IND_LABELS = {
   ALTO:          { label: 'Alto',         color: '#2196F3' },
   BAJO:          { label: 'Bajo',         color: '#9e9e9e' },
   NORMAL:        { label: 'Normal',       color: '#718096' },
+  POSITIVO:      { label: 'Positivo',     color: '#26a69a' },
+  NEGATIVO:      { label: 'Negativo',     color: '#ef5350' },
 }
 
 function Badge({ signal }) {
@@ -142,6 +144,22 @@ export default function SignalPanel({ signal, lastUpdate }) {
             </div>
           </div>
           <Badge signal={details.volume.signal} />
+        </div>
+      )}
+
+      {/* Noticias */}
+      {details.noticias && (
+        <div style={rowStyle}>
+          <div>
+            <div style={nameStyle}>Noticias</div>
+            <div style={{ fontSize: '0.72rem', color: '#718096' }}>
+              {details.noticias.available ? 'CryptoPanic' : 'No configurado'}
+            </div>
+          </div>
+          {details.noticias.available
+            ? <Badge signal={details.noticias.signal} />
+            : <span style={{ fontSize: '0.68rem', color: '#4a5568' }}>—</span>
+          }
         </div>
       )}
 

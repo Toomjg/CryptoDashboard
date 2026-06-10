@@ -3,6 +3,7 @@ import { useMarketData } from './hooks/useMarketData'
 import CandleChart from './components/CandleChart'
 import RsiChart from './components/RsiChart'
 import SignalPanel from './components/SignalPanel'
+import NewsPanel from './components/NewsPanel'
 
 const SYMBOLS   = ['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','XRPUSDT','ADAUSDT','DOGEUSDT','AVAXUSDT','DOTUSDT','LINKUSDT']
 const INTERVALS = [
@@ -118,15 +119,18 @@ export default function App() {
           </div>
         </div>
 
-        {/* Signal panel */}
-        <div style={{ width: '240px', flexShrink: 0 }}>
+        {/* Panel derecho: señal + noticias */}
+        <div style={{ width: '260px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem', overflowY: 'auto' }}>
           {!loading && !error && data && (
-            <SignalPanel signal={data.signal} lastUpdate={lastUpdate} />
+            <>
+              <SignalPanel signal={data.signal} lastUpdate={lastUpdate} />
+              <NewsPanel news={data.news} />
+            </>
           )}
           {loading && (
             <div style={{
               background: '#131722', border: '1px solid #1e2130',
-              borderRadius: 12, height: '100%', display: 'flex',
+              borderRadius: 12, flex: 1, display: 'flex',
               alignItems: 'center', justifyContent: 'center',
               color: '#4a5568', fontSize: '0.85rem'
             }}>
