@@ -151,6 +151,34 @@ export default function SignalPanel({ signal, lastUpdate }) {
         </div>
       )}
 
+      {/* Patrones de velas */}
+      {details.patterns && details.patterns.length > 0 && (
+        <div style={{ ...rowStyle, flexDirection: 'column', alignItems: 'flex-start', gap: '0.5rem' }}>
+          <div style={nameStyle}>Patrones de velas</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+            {details.patterns.map(p => {
+              const color = p.signal === 'ALCISTA' ? '#26a69a'
+                          : p.signal === 'BAJISTA' ? '#ef5350'
+                          : '#9e9e9e';
+              return (
+                <span key={p.name} style={{
+                  fontSize: '0.72rem', fontWeight: 600,
+                  padding: '2px 9px', borderRadius: 999,
+                  background: color + '25', color,
+                }}>
+                  {p.label}
+                  {p.score !== 0 && (
+                    <span style={{ opacity: 0.7, marginLeft: 3 }}>
+                      {p.score > 0 ? `+${p.score}` : p.score}
+                    </span>
+                  )}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Golden / Death Cross */}
       {details.cross && (
         <div style={rowStyle}>
