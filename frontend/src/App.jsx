@@ -4,6 +4,7 @@ import CandleChart from './components/CandleChart'
 import RsiChart from './components/RsiChart'
 import SignalPanel from './components/SignalPanel'
 import NewsPanel from './components/NewsPanel'
+import SignalsTable from './components/SignalsTable'
 
 const SYMBOLS   = ['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','XRPUSDT','ADAUSDT','DOGEUSDT','AVAXUSDT','DOTUSDT','LINKUSDT']
 const INTERVALS = [
@@ -113,11 +114,12 @@ export default function App() {
             Crypto Dashboard
           </span>
 
-          {/* Toggle Simple / Completo */}
+          {/* Toggle Simple / Completo / Señales */}
           <div style={{ display: 'flex', gap: 3, background: '#0d0f1a', borderRadius: 8, padding: 3 }}>
             {[
               { value: 'simple',   label: 'Simple'   },
               { value: 'completo', label: 'Completo' },
+              { value: 'senales',  label: 'Señales'  },
             ].map(v => (
               <button
                 key={v.value}
@@ -182,6 +184,18 @@ export default function App() {
                 <ScoreOverlay signal={data.signal} />
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ─── Vista Señales ───────────────────────────────────────────────── */}
+      {view === 'senales' && (
+        <div style={{ padding: '0.75rem', height: 'calc(100vh - 56px)', overflow: 'hidden' }}>
+          <div style={{
+            height: '100%', background: '#131722', borderRadius: 10,
+            border: '1px solid #1e2130', overflow: 'hidden',
+          }}>
+            <SignalsTable onSelectSymbol={sym => { setSymbol(sym); setView('simple') }} />
           </div>
         </div>
       )}

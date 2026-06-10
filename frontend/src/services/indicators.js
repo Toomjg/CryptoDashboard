@@ -534,26 +534,24 @@ export function generateSignal(candles) {
   let target = null;
   const isBull = score > 0;
 
-  // Primero intentar con S/R
-  if (srData.resistances.length > 0 || srData.supports.length > 0) {
-    if (isBull) {
-      const tp = srData.resistances.find(r => r.price > price);
-      const sl = [...srData.supports].reverse().find(s => s.price < price);
-      if (tp && sl) {
-        const risk = price - sl.price, reward = tp.price - price;
-        target = { tp: tp.price, sl: sl.price, rr: risk > 0 ? +(reward / risk).toFixed(2) : null, direction: 'LONG' };
-      }
-    } else if (!isBull && score < 0) {
-      const tp = [...srData.supports].reverse().find(s => s.price < price);
-      const sl = srData.resistances.find(r => r.price > price);
-      if (tp && sl) {
-        const risk = sl.price - price, reward = price - tp.price;
-        target = { tp: tp.price, sl: sl.price, rr: risk > 0 ? +(reward / risk).toFixed(2) : null, direction: 'SHORT' };
-      }
+  // Primero intentar con S/R (supports/resistances están ordenados por proximidad, más cercano primero)
+  if (isBull) {
+    const tp = srData.resistances.find(r => r.price > price);   // resistencia más cercana encima
+    const sl = srData.supports.find(s => s.price < price);      // soporte más cercano abajo
+    if (tp && sl) {
+      const risk = price - sl.price, reward = tp.price - price;
+      target = { tp: tp.price, sl: sl.price, rr: risk > 0 ? +(reward / risk).toFixed(2) : null, direction: 'LONG' };
+    }
+  } else if (score < 0) {
+    const tp = srData.supports.find(s => s.price < price);      // soporte más cercano abajo
+    const sl = srData.resistances.find(r => r.price > price);   // resistencia más cercana encima
+    if (tp && sl) {
+      const risk = sl.price - price, reward = price - tp.price;
+      target = { tp: tp.price, sl: sl.price, rr: risk > 0 ? +(reward / risk).toFixed(2) : null, direction: 'SHORT' };
     }
   }
 
-  // Fallback con ATR si no hay S/R suficiente
+  // Fallback con ATR (siempre activo si hay señal y no se encontraron niveles S/R)
   if (!target && score !== 0) {
     const highs  = candles.map(c => c.high);
     const lows   = candles.map(c => c.low);
