@@ -39,7 +39,7 @@ function buildData(candles, ticker, newsData, interval) {
     score: newsData.score, signal: newsData.signal, available: newsData.available,
   }
 
-  const markers = generateMarkers(candles, rsiV, macdLine, signalLine, times, interval)
+  const markers = generateMarkers(candles, interval)
 
   return {
     ticker,

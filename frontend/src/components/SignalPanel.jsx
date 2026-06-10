@@ -248,13 +248,13 @@ export default function SignalPanel({ signal, lastUpdate }) {
         </div>
       )}
 
-      {/* Noticias */}
+      {/* Sentimiento de mercado (Fear & Greed) */}
       {details.noticias && (
         <div style={rowStyle}>
           <div>
-            <div style={nameStyle}>Noticias</div>
+            <div style={nameStyle}>Sentimiento</div>
             <div style={{ fontSize: '0.72rem', color: '#718096' }}>
-              {details.noticias.available ? 'CryptoPanic' : 'No configurado'}
+              {details.noticias.available ? 'Fear & Greed Index' : 'No disponible'}
             </div>
           </div>
           {details.noticias.available

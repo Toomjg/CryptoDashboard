@@ -477,41 +477,93 @@ export function generateSignal(candles) {
 }
 
 // ─── Marcadores históricos de señal ──────────────────────────────────────────
+// Escanea todos los candles y coloca flechas donde el puntaje compuesto supera
+// el umbral. Usa RSI + MACD + EMA + Volumen (misma lógica que el panel de señal).
 
-export function generateMarkers(candles, rsiValues, macdLine, signalLine, times, interval) {
-  const markers = []
+export function generateMarkers(candles, interval) {
+  if (!candles || candles.length < 60) return []
+
+  const closes  = candles.map(c => c.close)
+  const volumes = candles.map(c => c.volume)
+  const times   = candles.map(c => c.time)
+
+  const ema20v  = ema(closes, 20)
+  const ema50v  = ema(closes, 50)
+  const rsiV    = rsi(closes, 14)
+  const { macdLine, signalLine } = macd(closes)
+  const volAvgV = volumeAvg(volumes, 20)
+
   const isShortTerm = interval === '15m' || interval === '1h'
+  // Corto plazo: umbral más bajo → señales más frecuentes para trades rápidos
+  // Largo plazo: umbral más alto → señales más selectivas para posiciones
+  const threshold = isShortTerm ? 5 : 7
 
-  for (let i = 1; i < macdLine.length; i++) {
-    if (macdLine[i] === null || signalLine[i] === null) continue
-    if (macdLine[i - 1] === null || signalLine[i - 1] === null) continue
+  const markers = []
+  let lastIdx   = -20  // cooldown: mínimo 10 velas entre marcadores
 
-    const bullCross = macdLine[i - 1] <= signalLine[i - 1] && macdLine[i] > signalLine[i]
-    const bearCross = macdLine[i - 1] >= signalLine[i - 1] && macdLine[i] < signalLine[i]
-    const curRsi    = rsiValues[i]
+  for (let i = 55; i < candles.length; i++) {
+    let score = 0
 
-    if (isShortTerm) {
-      // Corto plazo: solo cruce MACD → flecha pequeña sin texto
-      if (bullCross) {
-        markers.push({ time: times[i], position: 'belowBar', color: '#26a69a', shape: 'arrowUp',   size: 1 })
-      }
-      if (bearCross) {
-        markers.push({ time: times[i], position: 'aboveBar', color: '#ef5350', shape: 'arrowDown', size: 1 })
-      }
-    } else {
-      // Largo plazo: cruce MACD + RSI confirmando → flecha grande con texto
-      const rsiConfirmsBuy  = curRsi !== null && curRsi < 55
-      const rsiConfirmsSell = curRsi !== null && curRsi > 45
-      if (bullCross && rsiConfirmsBuy) {
-        markers.push({ time: times[i], position: 'belowBar', color: '#26a69a', shape: 'arrowUp',   size: 2, text: 'Compra' })
-      }
-      if (bearCross && rsiConfirmsSell) {
-        markers.push({ time: times[i], position: 'aboveBar', color: '#ef5350', shape: 'arrowDown', size: 2, text: 'Venta'  })
+    // RSI: sobreventa/sobrecompra
+    const r = rsiV[i]
+    if (r !== null) {
+      if      (r <= 30) score += 3
+      else if (r <= 40) score += 1
+      else if (r >= 70) score -= 3
+      else if (r >= 60) score -= 1
+    }
+
+    // MACD: cruce de líneas (señal más potente) o posición relativa
+    const ml = macdLine[i], ml0 = macdLine[i - 1]
+    const sl = signalLine[i], sl0 = signalLine[i - 1]
+    if (ml !== null && sl !== null && ml0 !== null && sl0 !== null) {
+      if      (ml0 <= sl0 && ml > sl) score += 3  // cruce alcista
+      else if (ml0 >= sl0 && ml < sl) score -= 3  // cruce bajista
+      else if (ml > sl)               score += 1
+      else if (ml < sl)               score -= 1
+    }
+
+    // EMAs: alineación del precio con medias móviles
+    const close = closes[i], e20 = ema20v[i], e50 = ema50v[i]
+    if (e20 !== null && e50 !== null) {
+      if      (close > e20 && e20 > e50) score += 2
+      else if (close > e20)              score += 1
+      else if (close < e20 && e20 < e50) score -= 2
+      else if (close < e20)              score -= 1
+    }
+
+    // Volumen: spike confirma dirección del movimiento
+    const va = volAvgV[i]
+    if (va !== null && volumes[i] > va * 1.5) {
+      score += closes[i] >= candles[i].open ? 1 : -1
+    }
+
+    // Colocar marcador si supera umbral y pasó el cooldown
+    if (i - lastIdx >= 10) {
+      if (score >= threshold) {
+        markers.push({
+          time:     times[i],
+          position: 'belowBar',
+          color:    '#26a69a',
+          shape:    'arrowUp',
+          size:     isShortTerm ? 1 : 2,
+          ...(isShortTerm ? {} : { text: 'Compra' }),
+        })
+        lastIdx = i
+      } else if (score <= -threshold) {
+        markers.push({
+          time:     times[i],
+          position: 'aboveBar',
+          color:    '#ef5350',
+          shape:    'arrowDown',
+          size:     isShortTerm ? 1 : 2,
+          ...(isShortTerm ? {} : { text: 'Venta' }),
+        })
+        lastIdx = i
       }
     }
   }
 
-  // Solo los últimos 60 para no saturar el gráfico en velas muy antiguas
   return markers.slice(-60)
 }
 

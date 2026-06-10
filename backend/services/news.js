@@ -1,78 +1,40 @@
 const axios = require('axios');
 
-const CURRENCY_MAP = {
-  BTCUSDT: 'BTC',  ETHUSDT: 'ETH',  SOLUSDT: 'SOL',
-  BNBUSDT: 'BNB',  XRPUSDT: 'XRP',  ADAUSDT: 'ADA',
-  DOGEUSDT: 'DOGE', AVAXUSDT: 'AVAX', DOTUSDT: 'DOT', LINKUSDT: 'LINK',
+// Cache de 15 minutos (el índice se actualiza una vez por día)
+const CACHE_KEY = 'fng';
+const CACHE_TTL = 15 * 60 * 1000;
+let cached = null;
+
+const LABELS_ES = {
+  'Extreme Fear': 'Miedo Extremo',
+  'Fear':         'Miedo',
+  'Neutral':      'Neutral',
+  'Greed':        'Codicia',
+  'Extreme Greed':'Codicia Extrema',
 };
 
-// Cache de 5 minutos por símbolo para no superar límites de la API
-const cache = new Map();
-const CACHE_TTL = 5 * 60 * 1000;
-
-function sentimentLabel(pos, neg) {
-  const total = pos + neg;
-  if (total < 2) return 'NEUTRAL';
-  const ratio = (pos - neg) / total;
-  if (ratio > 0.35) return 'POSITIVO';
-  if (ratio < -0.35) return 'NEGATIVO';
-  return 'NEUTRAL';
-}
-
-async function getNewsSentiment(symbol) {
-  const token = process.env.CRYPTOPANIC_TOKEN;
-  if (!token) return { score: 0, signal: 'NEUTRAL', news: [], available: false };
-
-  const cached = cache.get(symbol);
+async function getMarketSentiment() {
   if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.data;
 
-  const currency = CURRENCY_MAP[symbol] || symbol.replace('USDT', '');
-
   try {
-    const { data } = await axios.get('https://cryptopanic.com/api/v1/posts/', {
-      params: { auth_token: token, currencies: currency, public: true, kind: 'news' },
-      timeout: 8000,
-    });
+    const { data } = await axios.get('https://api.alternative.me/fng/?limit=1', { timeout: 8000 });
+    const item  = data.data[0];
+    const value = parseInt(item.value, 10);
+    const labelEn = item.value_classification;
+    const labelEs = LABELS_ES[labelEn] || labelEn;
 
-    const posts = data.results || [];
-
-    // Puntaje ponderado por votos y engagement
-    let weightedScore = 0, totalWeight = 0;
-    for (const post of posts.slice(0, 20)) {
-      const pos = post.votes?.positive || 0;
-      const neg = post.votes?.negative || 0;
-      const total = pos + neg;
-      if (total < 2) continue;
-      const weight = Math.log(total + 1);
-      weightedScore += ((pos - neg) / total) * weight;
-      totalWeight += weight;
-    }
-
-    const normalized = totalWeight > 0 ? weightedScore / totalWeight : 0;
+    // Indicador contrario: miedo extremo = oportunidad de compra, codicia extrema = señal de venta
     let score = 0, signal = 'NEUTRAL';
-    if (normalized > 0.35)  { score = 1;  signal = 'POSITIVO'; }
-    if (normalized < -0.35) { score = -1; signal = 'NEGATIVO'; }
+    if      (value <= 30) { score =  1; signal = 'POSITIVO'; }
+    else if (value >= 70) { score = -1; signal = 'NEGATIVO'; }
 
-    const news = posts.slice(0, 8).map(p => ({
-      id:        p.id,
-      title:     p.title,
-      url:       p.url,
-      source:    p.source?.title || 'Desconocido',
-      published: p.published_at,
-      votes: {
-        positive: p.votes?.positive || 0,
-        negative: p.votes?.negative || 0,
-      },
-      sentiment: sentimentLabel(p.votes?.positive || 0, p.votes?.negative || 0),
-    }));
-
-    const result = { score, signal, sentiment: +normalized.toFixed(2), news, available: true };
-    cache.set(symbol, { data: result, ts: Date.now() });
+    const result = { score, signal, value, label: labelEs, available: true };
+    cached = { data: result, ts: Date.now() };
     return result;
   } catch (err) {
-    console.error('CryptoPanic error:', err.message);
-    return { score: 0, signal: 'NEUTRAL', news: [], available: false };
+    console.error('Fear & Greed error:', err.message);
+    return { score: 0, signal: 'NEUTRAL', value: null, label: null, available: false };
   }
 }
 
-module.exports = { getNewsSentiment };
+module.exports = { getMarketSentiment };

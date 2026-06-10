@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { getNewsSentiment } = require('../services/news');
+const { getMarketSentiment } = require('../services/news');
 
 const SYMBOLS = [
   'BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','XRPUSDT',
@@ -9,16 +9,12 @@ const SYMBOLS = [
 router.get('/symbols', (req, res) => res.json(SYMBOLS));
 
 router.get('/news', async (req, res) => {
-  const { symbol = 'BTCUSDT' } = req.query;
-  if (!SYMBOLS.includes(symbol)) {
-    return res.status(400).json({ error: 'Symbol no soportado' });
-  }
   try {
-    const news = await getNewsSentiment(symbol);
-    res.json(news);
+    const sentiment = await getMarketSentiment();
+    res.json(sentiment);
   } catch (err) {
-    console.error('News error:', err.message);
-    res.json({ score: 0, signal: 'NEUTRAL', news: [], available: false });
+    console.error('Sentiment error:', err.message);
+    res.json({ score: 0, signal: 'NEUTRAL', value: null, label: null, available: false });
   }
 });
 
