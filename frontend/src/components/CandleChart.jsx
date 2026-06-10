@@ -5,7 +5,7 @@ const CHART_BG   = '#131722'
 const GRID_COLOR = '#1e2130'
 const TEXT_COLOR = '#b2b5be'
 
-export default function CandleChart({ candles, indicators, sr }) {
+export default function CandleChart({ candles, indicators, sr, markers }) {
   const containerRef = useRef(null)
   const chartRef     = useRef(null)
 
@@ -87,6 +87,12 @@ export default function CandleChart({ candles, indicators, sr }) {
       }
     }
 
+    // Marcadores de señal histórica (flechas buy/sell en las velas)
+    if (markers && markers.length > 0) {
+      const sorted = [...markers].sort((a, b) => a.time - b.time)
+      candleSeries.setMarkers(sorted)
+    }
+
     chart.timeScale().fitContent()
     chartRef.current = chart
 
@@ -105,7 +111,7 @@ export default function CandleChart({ candles, indicators, sr }) {
       chart.remove()
       chartRef.current = null
     }
-  }, [candles, indicators, sr])
+  }, [candles, indicators, sr, markers])
 
   return <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
 }

@@ -3,6 +3,7 @@ import { getKlines, getTicker } from '../services/binance'
 import {
   ema, rsi, macd, volumeAvg,
   generateSignal, scoreToOverall,
+  generateMarkers,
   toSeries, toHistogramSeries,
 } from '../services/indicators'
 
@@ -16,7 +17,7 @@ async function fetchNews(symbol) {
   }
 }
 
-function buildData(candles, ticker, newsData) {
+function buildData(candles, ticker, newsData, interval) {
   const closes  = candles.map(c => c.close)
   const volumes = candles.map(c => c.volume)
   const times   = candles.map(c => c.time)
@@ -38,9 +39,12 @@ function buildData(candles, ticker, newsData) {
     score: newsData.score, signal: newsData.signal, available: newsData.available,
   }
 
+  const markers = generateMarkers(candles, rsiV, macdLine, signalLine, times, interval)
+
   return {
     ticker,
     candles,
+    markers,
     indicators: {
       ema20:         toSeries(ema20v,  times),
       ema50:         toSeries(ema50v,  times),
@@ -77,7 +81,7 @@ export function useMarketData(symbol, interval) {
           fetchNews(symbol),
         ])
         if (!cancelled) {
-          setData(buildData(candles, ticker, newsData))
+          setData(buildData(candles, ticker, newsData, interval))
           setLivePrice(ticker)
         }
       } catch (e) {

@@ -476,6 +476,45 @@ export function generateSignal(candles) {
   return { overall: scoreToOverall(score), score, maxScore: 20, details };
 }
 
+// ─── Marcadores históricos de señal ──────────────────────────────────────────
+
+export function generateMarkers(candles, rsiValues, macdLine, signalLine, times, interval) {
+  const markers = []
+  const isShortTerm = interval === '15m' || interval === '1h'
+
+  for (let i = 1; i < macdLine.length; i++) {
+    if (macdLine[i] === null || signalLine[i] === null) continue
+    if (macdLine[i - 1] === null || signalLine[i - 1] === null) continue
+
+    const bullCross = macdLine[i - 1] <= signalLine[i - 1] && macdLine[i] > signalLine[i]
+    const bearCross = macdLine[i - 1] >= signalLine[i - 1] && macdLine[i] < signalLine[i]
+    const curRsi    = rsiValues[i]
+
+    if (isShortTerm) {
+      // Corto plazo: solo cruce MACD → flecha pequeña sin texto
+      if (bullCross) {
+        markers.push({ time: times[i], position: 'belowBar', color: '#26a69a', shape: 'arrowUp',   size: 1 })
+      }
+      if (bearCross) {
+        markers.push({ time: times[i], position: 'aboveBar', color: '#ef5350', shape: 'arrowDown', size: 1 })
+      }
+    } else {
+      // Largo plazo: cruce MACD + RSI confirmando → flecha grande con texto
+      const rsiConfirmsBuy  = curRsi !== null && curRsi < 55
+      const rsiConfirmsSell = curRsi !== null && curRsi > 45
+      if (bullCross && rsiConfirmsBuy) {
+        markers.push({ time: times[i], position: 'belowBar', color: '#26a69a', shape: 'arrowUp',   size: 2, text: 'Compra' })
+      }
+      if (bearCross && rsiConfirmsSell) {
+        markers.push({ time: times[i], position: 'aboveBar', color: '#ef5350', shape: 'arrowDown', size: 2, text: 'Venta'  })
+      }
+    }
+  }
+
+  // Solo los últimos 60 para no saturar el gráfico en velas muy antiguas
+  return markers.slice(-60)
+}
+
 // ─── Series para gráficos ─────────────────────────────────────────────────────
 
 export function toSeries(values, times) {
