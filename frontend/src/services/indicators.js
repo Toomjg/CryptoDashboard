@@ -494,17 +494,15 @@ export function generateMarkers(candles, interval) {
   const volAvgV = volumeAvg(volumes, 20)
 
   const isShortTerm = interval === '15m' || interval === '1h'
-  // Corto plazo: umbral más bajo → señales más frecuentes para trades rápidos
-  // Largo plazo: umbral más alto → señales más selectivas para posiciones
-  const threshold = isShortTerm ? 5 : 7
+  const threshold   = isShortTerm ? 5 : 6
 
   const markers = []
-  let lastIdx   = -20  // cooldown: mínimo 10 velas entre marcadores
+  let lastIdx   = -20
 
   for (let i = 55; i < candles.length; i++) {
     let score = 0
 
-    // RSI: sobreventa/sobrecompra
+    // RSI
     const r = rsiV[i]
     if (r !== null) {
       if      (r <= 30) score += 3
@@ -513,17 +511,17 @@ export function generateMarkers(candles, interval) {
       else if (r >= 60) score -= 1
     }
 
-    // MACD: cruce de líneas (señal más potente) o posición relativa
+    // MACD
     const ml = macdLine[i], ml0 = macdLine[i - 1]
     const sl = signalLine[i], sl0 = signalLine[i - 1]
     if (ml !== null && sl !== null && ml0 !== null && sl0 !== null) {
-      if      (ml0 <= sl0 && ml > sl) score += 3  // cruce alcista
-      else if (ml0 >= sl0 && ml < sl) score -= 3  // cruce bajista
+      if      (ml0 <= sl0 && ml > sl) score += 3
+      else if (ml0 >= sl0 && ml < sl) score -= 3
       else if (ml > sl)               score += 1
       else if (ml < sl)               score -= 1
     }
 
-    // EMAs: alineación del precio con medias móviles
+    // EMAs
     const close = closes[i], e20 = ema20v[i], e50 = ema50v[i]
     if (e20 !== null && e50 !== null) {
       if      (close > e20 && e20 > e50) score += 2
@@ -532,32 +530,31 @@ export function generateMarkers(candles, interval) {
       else if (close < e20)              score -= 1
     }
 
-    // Volumen: spike confirma dirección del movimiento
+    // Volumen
     const va = volAvgV[i]
     if (va !== null && volumes[i] > va * 1.5) {
       score += closes[i] >= candles[i].open ? 1 : -1
     }
 
-    // Colocar marcador si supera umbral y pasó el cooldown
     if (i - lastIdx >= 10) {
       if (score >= threshold) {
         markers.push({
           time:     times[i],
           position: 'belowBar',
-          color:    '#26a69a',
+          color:    '#FFD700',
           shape:    'arrowUp',
           size:     isShortTerm ? 1 : 2,
-          ...(isShortTerm ? {} : { text: 'Compra' }),
+          text:     String(score),
         })
         lastIdx = i
       } else if (score <= -threshold) {
         markers.push({
           time:     times[i],
           position: 'aboveBar',
-          color:    '#ef5350',
+          color:    '#FFD700',
           shape:    'arrowDown',
           size:     isShortTerm ? 1 : 2,
-          ...(isShortTerm ? {} : { text: 'Venta' }),
+          text:     String(Math.abs(score)),
         })
         lastIdx = i
       }

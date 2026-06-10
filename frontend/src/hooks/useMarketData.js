@@ -76,7 +76,7 @@ export function useMarketData(symbol, interval) {
         setLoading(true)
         setError(null)
         const [candles, ticker, newsData] = await Promise.all([
-          getKlines(symbol, interval, 300),
+          getKlines(symbol, interval, 500),
           getTicker(symbol),
           fetchNews(symbol),
         ])

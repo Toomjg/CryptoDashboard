@@ -52,32 +52,27 @@ function PriceHeader({ livePrice }) {
   )
 }
 
-// Overlay con número 1-10 y label de señal para la vista simple
+// Overlay compacto en esquina superior izquierda para vista simple
 function ScoreOverlay({ signal }) {
   if (!signal) return null
   const cfg = SCORE_MAP[signal.overall] || SCORE_MAP.NEUTRAL
   return (
     <div style={{
-      position: 'absolute', top: 14, left: 14, zIndex: 10,
-      background: '#13172295', backdropFilter: 'blur(6px)',
-      borderRadius: 14, padding: '10px 20px',
-      border: `2px solid ${cfg.color}55`,
-      display: 'flex', alignItems: 'center', gap: '1rem',
+      position: 'absolute', top: 10, left: 10, zIndex: 10,
+      background: '#13172290', backdropFilter: 'blur(4px)',
+      borderRadius: 8, padding: '5px 11px',
+      border: `1px solid ${cfg.color}55`,
+      display: 'flex', alignItems: 'center', gap: '7px',
       pointerEvents: 'none',
     }}>
       <span style={{
-        fontSize: '3.5rem', fontWeight: 900, color: cfg.color,
+        fontSize: '1.6rem', fontWeight: 900, color: cfg.color,
         lineHeight: 1, fontVariantNumeric: 'tabular-nums',
       }}>
         {cfg.num}
       </span>
-      <div>
-        <div style={{ fontSize: '0.62rem', color: '#718096', marginBottom: 3, letterSpacing: 1 }}>
-          SEÑAL
-        </div>
-        <div style={{ fontSize: '0.85rem', fontWeight: 800, color: cfg.color, letterSpacing: 0.5 }}>
-          {cfg.label}
-        </div>
+      <div style={{ fontSize: '0.72rem', fontWeight: 700, color: cfg.color }}>
+        {cfg.label}
       </div>
     </div>
   )
@@ -170,7 +165,6 @@ export default function App() {
                 <CandleChart
                   candles={data.candles}
                   indicators={data.indicators}
-                  sr={data.signal.details.sr}
                   markers={data.markers}
                   interval={interval}
                 />
