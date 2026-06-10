@@ -46,86 +46,76 @@ function drawTradeBox(chart, canvas, container, tradeBox) {
   const { entry, tp, sl, direction } = tradeBox
   const isLong = direction === 'LONG'
 
-  const ps = chart.priceScale('right')
-  const ts = chart.timeScale()
+  try {
+    const ps = chart.priceScale('right')
+    const ts = chart.timeScale()
 
-  const yEntry = ps.priceToCoordinate(entry)
-  const yTp    = ps.priceToCoordinate(tp)
-  const ySl    = ps.priceToCoordinate(sl)
+    const yEntry = ps.priceToCoordinate(entry)
+    const yTp    = ps.priceToCoordinate(tp)
+    const ySl    = ps.priceToCoordinate(sl)
 
-  if (yEntry == null || yTp == null || ySl == null) return
+    if (yEntry == null || yTp == null || ySl == null) return
 
-  // xStart: coordenada del último candle, xEnd: borde derecho del área del gráfico
-  const rightScaleW = 65
-  const xEnd        = w - rightScaleW
+    const rightScaleW = 65
+    const xEnd        = w - rightScaleW
 
-  // Intentar obtener la coordenada del borde derecho del tiempo visible
-  const visRange = ts.getVisibleLogicalRange()
-  if (!visRange) return
-  // Usar el 70% desde la derecha como punto de inicio del box si no hay coordenada exacta
-  const xStart = xEnd - (xEnd * 0.30)
+    // Usar xStart al ~65% del área para mostrar el cuadro en la zona derecha
+    const xStart = Math.round(xEnd * 0.62)
 
-  // ── Zona TP (verde arriba para long, rojo arriba para short) ──────────────
-  const profitColor  = isLong ? '#26a69a' : '#ef5350'
-  const lossColor    = isLong ? '#ef5350' : '#26a69a'
-  const yProfitTop   = isLong ? yTp    : yEntry
-  const yProfitBot   = isLong ? yEntry : yTp
-  const yLossTop     = isLong ? yEntry : ySl
-  const yLossBot     = isLong ? ySl    : yEntry
+    if (xStart >= xEnd) return
 
-  // Fondo zona ganancia
-  ctx.fillStyle = isLong ? 'rgba(38,166,154,0.15)' : 'rgba(239,83,80,0.15)'
-  ctx.fillRect(xStart, yProfitTop, xEnd - xStart, yProfitBot - yProfitTop)
+    // ── Zonas ─────────────────────────────────────────────────────────────
+    const profitColor = isLong ? '#26a69a' : '#ef5350'
+    const lossColor   = isLong ? '#ef5350' : '#26a69a'
+    const yProfitTop  = isLong ? yTp    : yEntry
+    const yProfitBot  = isLong ? yEntry : yTp
+    const yLossTop    = isLong ? yEntry : ySl
+    const yLossBot    = isLong ? ySl    : yEntry
+    const bw          = xEnd - xStart
 
-  // Borde zona ganancia
-  ctx.strokeStyle = profitColor + 'cc'
-  ctx.lineWidth   = 1
-  ctx.strokeRect(xStart, yProfitTop, xEnd - xStart, yProfitBot - yProfitTop)
+    // Fondo zona ganancia
+    ctx.fillStyle = isLong ? 'rgba(38,166,154,0.18)' : 'rgba(239,83,80,0.18)'
+    ctx.fillRect(xStart, yProfitTop, bw, yProfitBot - yProfitTop)
+    ctx.strokeStyle = profitColor + 'bb'
+    ctx.lineWidth   = 1
+    ctx.strokeRect(xStart, yProfitTop, bw, yProfitBot - yProfitTop)
 
-  // Fondo zona pérdida
-  ctx.fillStyle = isLong ? 'rgba(239,83,80,0.15)' : 'rgba(38,166,154,0.15)'
-  ctx.fillRect(xStart, yLossTop, xEnd - xStart, yLossBot - yLossTop)
+    // Fondo zona pérdida
+    ctx.fillStyle = isLong ? 'rgba(239,83,80,0.18)' : 'rgba(38,166,154,0.18)'
+    ctx.fillRect(xStart, yLossTop, bw, yLossBot - yLossTop)
+    ctx.strokeStyle = lossColor + 'bb'
+    ctx.lineWidth   = 1
+    ctx.strokeRect(xStart, yLossTop, bw, yLossBot - yLossTop)
 
-  // Borde zona pérdida
-  ctx.strokeStyle = lossColor + 'cc'
-  ctx.lineWidth   = 1
-  ctx.strokeRect(xStart, yLossTop, xEnd - xStart, yLossBot - yLossTop)
-
-  // ── Línea de entrada (dashed blanca) ──────────────────────────────────────
-  ctx.strokeStyle = 'rgba(255,255,255,0.55)'
-  ctx.lineWidth   = 1
-  ctx.setLineDash([5, 4])
-  ctx.beginPath()
-  ctx.moveTo(xStart, yEntry)
-  ctx.lineTo(xEnd,   yEntry)
-  ctx.stroke()
-  ctx.setLineDash([])
-
-  // ── Etiquetas ─────────────────────────────────────────────────────────────
-  const lx     = xStart + 8
-  const radius = 3
-
-  // Helper: fondo pill para etiquetas
-  function pill(text, x, y, color) {
-    ctx.font         = 'bold 11px monospace'
-    const tw         = ctx.measureText(text).width
-    ctx.fillStyle    = color + '33'
-    const px = 5, py = 3
+    // ── Línea de entrada ──────────────────────────────────────────────────
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)'
+    ctx.lineWidth   = 1.5
+    ctx.setLineDash([6, 4])
     ctx.beginPath()
-    ctx.roundRect(x - px, y - 12, tw + px * 2, 16, radius)
-    ctx.fill()
-    ctx.fillStyle = color
-    ctx.fillText(text, x, y)
+    ctx.moveTo(xStart, yEntry)
+    ctx.lineTo(xEnd,   yEntry)
+    ctx.stroke()
+    ctx.setLineDash([])
+
+    // ── Etiquetas ─────────────────────────────────────────────────────────
+    ctx.font      = 'bold 11px monospace'
+    ctx.textAlign = 'left'
+    const lx = xStart + 8
+
+    function label(text, x, y, color) {
+      const tw = ctx.measureText(text).width
+      ctx.fillStyle = color + '30'
+      ctx.fillRect(x - 3, y - 12, tw + 6, 15)
+      ctx.fillStyle = color
+      ctx.fillText(text, x, y)
+    }
+
+    label(`TP  $${fmtPrice(tp)}`, lx, yProfitTop + 14, profitColor)
+    label(isLong ? '▲ COMPRA' : '▼ VENTA',   lx, yEntry  - 5, '#ffffff')
+    label(`SL  $${fmtPrice(sl)}`, lx, yLossBot  - 5, lossColor)
+  } catch (e) {
+    // Falla silenciosa si el chart aún no está listo
   }
-
-  // Label TP
-  pill(`TP  $${fmtPrice(tp)}`, lx, yProfitTop + 14, profitColor)
-
-  // Label Entrada
-  pill(isLong ? '▲ COMPRA' : '▼ VENTA', lx, yEntry - 5, '#ffffffcc')
-
-  // Label SL
-  pill(`SL  $${fmtPrice(sl)}`, lx, yLossBot - 5, lossColor)
 }
 
 export default function CandleChart({ candles, indicators, sr, markers, tradeBox }) {
@@ -223,7 +213,8 @@ export default function CandleChart({ candles, indicators, sr, markers, tradeBox
     }
 
     chart.timeScale().subscribeVisibleLogicalRangeChange(redraw)
-    setTimeout(redraw, 80)
+    setTimeout(redraw, 200)
+    setTimeout(redraw, 600)
 
     // Resize
     const observer = new ResizeObserver(() => {
