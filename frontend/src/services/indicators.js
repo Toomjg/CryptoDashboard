@@ -1,5 +1,39 @@
 // ─── Indicadores base ────────────────────────────────────────────────────────
 
+export function atr(highs, lows, closes, period = 14) {
+  const n = closes.length;
+  const result = new Array(n).fill(null);
+  if (n < period + 1) return result;
+  for (let i = 1; i < n; i++) {
+    const tr = Math.max(
+      highs[i]  - lows[i],
+      Math.abs(highs[i]  - closes[i - 1]),
+      Math.abs(lows[i]   - closes[i - 1])
+    );
+    if (i === period) {
+      let sum = 0;
+      for (let j = 1; j <= period; j++) {
+        sum += Math.max(highs[j] - lows[j], Math.abs(highs[j] - closes[j-1]), Math.abs(lows[j] - closes[j-1]));
+      }
+      result[period] = sum / period;
+    } else if (i > period && result[i - 1] !== null) {
+      result[i] = (result[i - 1] * (period - 1) + tr) / period;
+    }
+  }
+  return result;
+}
+
+export function bollingerBands(closes, period = 20, mult = 2) {
+  const result = new Array(closes.length).fill(null);
+  for (let i = period - 1; i < closes.length; i++) {
+    const slice = closes.slice(i - period + 1, i + 1);
+    const mean  = slice.reduce((a, b) => a + b, 0) / period;
+    const sd    = Math.sqrt(slice.reduce((s, v) => s + (v - mean) ** 2, 0) / period);
+    result[i]   = { upper: mean + mult * sd, middle: mean, lower: mean - mult * sd };
+  }
+  return result;
+}
+
 export function ema(values, period) {
   const k = 2 / (period + 1);
   const result = new Array(values.length).fill(null);
@@ -473,7 +507,68 @@ export function generateSignal(candles) {
     resistances: srData.resistances,
   };
 
-  return { overall: scoreToOverall(score), score, maxScore: 20, details };
+  // Bollinger Bands: -2 a +2
+  // Precio bajo banda inferior = sobreventa extrema (compra fuerte)
+  // Precio sobre banda superior = sobrecompra extrema (venta fuerte)
+  const bbAll = bollingerBands(closes);
+  const bb    = bbAll[n];
+  if (bb) {
+    const bPct = (bb.upper - bb.lower) > 0
+      ? (price - bb.lower) / (bb.upper - bb.lower)
+      : 0.5;
+    let s = 0, sig = 'NEUTRAL';
+    if      (bPct <= 0)   { s =  2; sig = 'COMPRA'; }
+    else if (bPct <= 0.2) { s =  1; sig = 'DEBIL_COMPRA'; }
+    else if (bPct >= 1)   { s = -2; sig = 'VENTA'; }
+    else if (bPct >= 0.8) { s = -1; sig = 'DEBIL_VENTA'; }
+    score += s;
+    details.bb = {
+      upper:   +bb.upper.toFixed(2),
+      lower:   +bb.lower.toFixed(2),
+      percent: +bPct.toFixed(3),
+      signal:  sig, score: s,
+    };
+  }
+
+  // ─── Objetivo de precio (TP / SL) ─────────────────────────────────────────
+  let target = null;
+  const isBull = score > 0;
+
+  // Primero intentar con S/R
+  if (srData.resistances.length > 0 || srData.supports.length > 0) {
+    if (isBull) {
+      const tp = srData.resistances.find(r => r.price > price);
+      const sl = [...srData.supports].reverse().find(s => s.price < price);
+      if (tp && sl) {
+        const risk = price - sl.price, reward = tp.price - price;
+        target = { tp: tp.price, sl: sl.price, rr: risk > 0 ? +(reward / risk).toFixed(2) : null, direction: 'LONG' };
+      }
+    } else if (!isBull && score < 0) {
+      const tp = [...srData.supports].reverse().find(s => s.price < price);
+      const sl = srData.resistances.find(r => r.price > price);
+      if (tp && sl) {
+        const risk = sl.price - price, reward = price - tp.price;
+        target = { tp: tp.price, sl: sl.price, rr: risk > 0 ? +(reward / risk).toFixed(2) : null, direction: 'SHORT' };
+      }
+    }
+  }
+
+  // Fallback con ATR si no hay S/R suficiente
+  if (!target && score !== 0) {
+    const highs  = candles.map(c => c.high);
+    const lows   = candles.map(c => c.low);
+    const atrV   = atr(highs, lows, closes, 14);
+    const curAtr = atrV[n];
+    if (curAtr !== null) {
+      if (isBull) {
+        target = { tp: +(price + curAtr * 1.5).toFixed(2), sl: +(price - curAtr * 0.8).toFixed(2), rr: 1.88, direction: 'LONG',  fromAtr: true };
+      } else {
+        target = { tp: +(price - curAtr * 1.5).toFixed(2), sl: +(price + curAtr * 0.8).toFixed(2), rr: 1.88, direction: 'SHORT', fromAtr: true };
+      }
+    }
+  }
+
+  return { overall: scoreToOverall(score), score, maxScore: 22, details, target };
 }
 
 // ─── Marcadores históricos de señal ──────────────────────────────────────────

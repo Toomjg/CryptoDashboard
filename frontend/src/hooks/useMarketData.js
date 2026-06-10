@@ -33,7 +33,7 @@ function buildData(candles, ticker, newsData, interval) {
 
   // Integrar noticias al score
   signal.score   += newsData.score
-  signal.maxScore = 11
+  signal.maxScore = 13
   signal.overall  = scoreToOverall(signal.score)
   signal.details.noticias = {
     score: newsData.score, signal: newsData.signal, available: newsData.available,

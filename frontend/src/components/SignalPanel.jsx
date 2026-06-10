@@ -71,9 +71,16 @@ function ScoreBar({ score, max }) {
   )
 }
 
+function fmtPrice(v) {
+  if (v == null) return '—'
+  if (v >= 1000)  return v.toLocaleString('en-US', { maximumFractionDigits: 0 })
+  if (v >= 1)     return v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  return v.toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 })
+}
+
 export default function SignalPanel({ signal, lastUpdate }) {
   if (!signal) return null
-  const { overall, score, maxScore, details } = signal
+  const { overall, score, maxScore, details, target } = signal
   const cfg = SIGNAL_CONFIG[overall] || SIGNAL_CONFIG.NEUTRAL
 
   return (
@@ -93,6 +100,58 @@ export default function SignalPanel({ signal, lastUpdate }) {
         </div>
         <ScoreBar score={score} max={maxScore} />
       </div>
+
+      {/* TP / SL / R:R */}
+      {target && overall !== 'NEUTRAL' && (
+        <div style={{
+          background: '#1a1d2e', borderRadius: 10,
+          border: `1px solid ${target.direction === 'LONG' ? '#26a69a' : '#ef5350'}30`,
+          padding: '0.85rem 1rem',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
+            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#e2e8f0' }}>
+              {target.direction === 'LONG' ? '▲ Objetivo Largo' : '▼ Objetivo Corto'}
+            </span>
+            {target.rr && (
+              <span style={{
+                fontSize: '0.72rem', fontWeight: 800, padding: '2px 10px',
+                borderRadius: 999,
+                background: target.rr >= 2 ? '#26a69a25' : target.rr >= 1.2 ? '#ff980025' : '#ef535025',
+                color:      target.rr >= 2 ? '#26a69a'   : target.rr >= 1.2 ? '#ff9800'   : '#ef5350',
+              }}>
+                R/R {target.rr}
+              </span>
+            )}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.72rem', color: '#9e9e9e' }}>Entrada</span>
+              <span style={{ fontSize: '0.72rem', color: '#e2e8f0', fontFamily: 'monospace' }}>
+                precio actual
+              </span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.72rem', color: target.direction === 'LONG' ? '#26a69a' : '#ef5350' }}>
+                Objetivo (TP)
+              </span>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: target.direction === 'LONG' ? '#26a69a' : '#ef5350', fontFamily: 'monospace' }}>
+                ${fmtPrice(target.tp)}
+              </span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.72rem', color: '#ef5350' }}>Stop Loss</span>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#ef5350', fontFamily: 'monospace' }}>
+                ${fmtPrice(target.sl)}
+              </span>
+            </div>
+          </div>
+          {target.fromAtr && (
+            <div style={{ fontSize: '0.65rem', color: '#4a5568', marginTop: '0.4rem' }}>
+              * estimado por ATR (sin niveles S/R disponibles)
+            </div>
+          )}
+        </div>
+      )}
 
       {/* RSI */}
       {details.rsi && (
@@ -245,6 +304,19 @@ export default function SignalPanel({ signal, lastUpdate }) {
             </div>
           </div>
           <Badge signal={details.divMacd.signal} />
+        </div>
+      )}
+
+      {/* Bollinger Bands */}
+      {details.bb && details.bb.signal !== 'NEUTRAL' && (
+        <div style={rowStyle}>
+          <div>
+            <div style={nameStyle}>Bollinger Bands</div>
+            <div style={{ fontSize: '0.72rem', color: '#718096' }}>
+              %B {(details.bb.percent * 100).toFixed(0)}% — [{fmtPrice(details.bb.lower)} / {fmtPrice(details.bb.upper)}]
+            </div>
+          </div>
+          <Badge signal={details.bb.signal} />
         </div>
       )}
 
