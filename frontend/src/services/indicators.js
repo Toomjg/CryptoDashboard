@@ -537,6 +537,8 @@ export function generateMarkers(candles, interval) {
     }
 
     if (i - lastIdx >= 10) {
+      // Mapear score absoluto (1-9) → fuerza 1-10
+      const strength = Math.max(1, Math.min(10, Math.round(Math.abs(score) * 10 / 9)))
       if (score >= threshold) {
         markers.push({
           time:     times[i],
@@ -544,7 +546,7 @@ export function generateMarkers(candles, interval) {
           color:    '#FFD700',
           shape:    'arrowUp',
           size:     isShortTerm ? 1 : 2,
-          text:     String(score),
+          text:     String(strength),
         })
         lastIdx = i
       } else if (score <= -threshold) {
@@ -554,7 +556,7 @@ export function generateMarkers(candles, interval) {
           color:    '#FFD700',
           shape:    'arrowDown',
           size:     isShortTerm ? 1 : 2,
-          text:     String(Math.abs(score)),
+          text:     String(strength),
         })
         lastIdx = i
       }
