@@ -30,4 +30,27 @@ router.post('/alert', async (req, res) => {
   }
 });
 
+// GET /api/market/alert/test  — mensaje de prueba para verificar configuración Telegram
+router.get('/alert/test', async (req, res) => {
+  try {
+    const result = await sendSignalAlert({
+      symbol:   'BTCUSDT',
+      interval: '1h',
+      overall:  'COMPRA_FUERTE',
+      score:    12,
+      entry:    99999,
+      tp:       105000,
+      sl:       96000,
+      rr:       1.84,
+      fromAtr:  false,
+      higherTf: '4h',
+      higherOverall: 'COMPRA_FUERTE',
+      isTest: true,
+    });
+    res.json(result);
+  } catch (err) {
+    res.json({ ok: false, error: err.message });
+  }
+});
+
 module.exports = router;

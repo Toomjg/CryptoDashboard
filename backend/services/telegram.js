@@ -7,7 +7,7 @@ function fmtPrice(v) {
   return '$' + v.toFixed(4)
 }
 
-async function sendSignalAlert({ symbol, interval, overall, score, entry, tp, sl, rr, fromAtr }) {
+async function sendSignalAlert({ symbol, interval, overall, score, entry, tp, sl, rr, fromAtr, isTest }) {
   const token  = process.env.TELEGRAM_BOT_TOKEN
   const chatId = process.env.TELEGRAM_CHAT_ID
   if (!token || !chatId) return { ok: false, error: 'TELEGRAM_BOT_TOKEN o TELEGRAM_CHAT_ID no configurados' }
@@ -18,15 +18,16 @@ async function sendSignalAlert({ symbol, interval, overall, score, entry, tp, sl
   const srcTag  = fromAtr ? ' <i>(ATR)</i>' : ' <i>(S/R)</i>'
 
   const text = [
-    `${emoji} <b>${overall.replace('_', ' ')}</b> — ${symbol.replace('USDT', '/USDT')} ${interval}`,
+    isTest ? `🔔 <b>MENSAJE DE PRUEBA</b>` : null,
+    `${emoji} <b>${overall.replace(/_/g, ' ')}</b> — ${symbol.replace('USDT', '/USDT')} ${interval}`,
     ``,
     `💰 Entrada: <code>${fmtPrice(entry)}</code>`,
     `🎯 Objetivo: <code>${fmtPrice(tp)}</code>`,
-    `🛑 Stop: <code>${fmtPrice(sl)}</code>`,
-    `📊 R/R: <b>${rr}</b>${rrColor}${srcTag}`,
+    `🛑 Stop:    <code>${fmtPrice(sl)}</code>`,
+    `📊 R/R: <b>${rr}</b> ${rrColor}${srcTag}`,
     ``,
     `<i>⚡ Señal confirmada en 2 temporalidades</i>`,
-  ].join('\n')
+  ].filter(Boolean).join('\n')
 
   try {
     const res = await axios.post(
