@@ -7,7 +7,7 @@ import {
   toSeries, toHistogramSeries,
 } from '../services/indicators'
 
-const HIGHER_TF = { '15m': '1h', '1h': '4h', '4h': '1d' }
+const HIGHER_TF = { '5m': '15m', '15m': '1h', '1h': '4h', '4h': '1d' }
 const STRONG_SIGNALS = new Set(['COMPRA', 'COMPRA_FUERTE', 'VENTA', 'VENTA_FUERTE'])
 const ALERT_DEBOUNCE_MS = 4 * 60 * 60 * 1000 // 4 horas
 
@@ -154,22 +154,33 @@ export function useMarketData(symbol, interval) {
     }
   }, [symbol, interval])
 
-  // WebSocket precio en vivo
+  // WebSocket precio en vivo + precio tick al bot (cada 5s)
   useEffect(() => {
     if (wsRef.current) wsRef.current.close()
+    let lastTick = 0
     const ws = new WebSocket(
       `wss://stream.binance.com:9443/ws/${symbol.toLowerCase()}@ticker`
     )
     wsRef.current = ws
     ws.onmessage = e => {
-      const t = JSON.parse(e.data)
+      const t     = JSON.parse(e.data)
+      const price = parseFloat(t.c)
       setLivePrice({
-        price:  parseFloat(t.c),
+        price,
         change: parseFloat(t.P),
         high:   parseFloat(t.h),
         low:    parseFloat(t.l),
         volume: parseFloat(t.q),
       })
+      const now = Date.now()
+      if (now - lastTick > 5000) {
+        lastTick = now
+        fetch('/api/bot/tick', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ symbol, price }),
+        }).catch(() => {})
+      }
     }
     return () => ws.close()
   }, [symbol])

@@ -6,9 +6,11 @@ import SignalPanel from './components/SignalPanel'
 import NewsPanel from './components/NewsPanel'
 import SignalsTable from './components/SignalsTable'
 import BacktestView from './components/BacktestView'
+import BotPanel from './components/BotPanel'
 
 const SYMBOLS   = ['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','XRPUSDT','ADAUSDT','DOGEUSDT','AVAXUSDT','DOTUSDT','LINKUSDT']
 const INTERVALS = [
+  { value: '5m',  label: '5m'  },
   { value: '15m', label: '15m' },
   { value: '1h',  label: '1H'  },
   { value: '4h',  label: '4H'  },
@@ -122,6 +124,7 @@ export default function App() {
               { value: 'completo', label: 'Completo' },
               { value: 'senales',  label: 'Señales'  },
               { value: 'backtest', label: 'Backtest' },
+              { value: 'bot',     label: '🤖 Bot'   },
             ].map(v => (
               <button
                 key={v.value}
@@ -221,6 +224,18 @@ export default function App() {
                 symbol={symbol}
               />
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ─── Vista Bot ───────────────────────────────────────────────────── */}
+      {view === 'bot' && (
+        <div style={{ padding: '0.75rem', height: 'calc(100vh - 56px)', overflow: 'hidden' }}>
+          <div style={{
+            height: '100%', background: '#131722', borderRadius: 10,
+            border: '1px solid #1e2130', overflow: 'hidden',
+          }}>
+            <BotPanel />
           </div>
         </div>
       )}

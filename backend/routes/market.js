@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const { getMarketSentiment } = require('../services/news');
 const { sendSignalAlert }    = require('../services/telegram');
+const trader                 = require('../services/trader');
 
 const SYMBOLS = [
   'BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','XRPUSDT',
@@ -22,8 +23,13 @@ router.get('/news', async (req, res) => {
 // POST /api/market/alert  — frontend lo llama cuando detecta señal confirmada en 2 TF
 router.post('/alert', async (req, res) => {
   try {
-    const result = await sendSignalAlert(req.body);
-    res.json(result);
+    const [telegramResult, botResult] = await Promise.allSettled([
+      sendSignalAlert(req.body),
+      Promise.resolve(trader.processSignal(req.body)),
+    ])
+    const tg  = telegramResult.status === 'fulfilled' ? telegramResult.value : { ok: false }
+    const bot = botResult.status     === 'fulfilled' ? botResult.value     : { triggered: false }
+    res.json({ ...tg, bot })
   } catch (err) {
     console.error('Alert error:', err.message);
     res.json({ ok: false, error: err.message });

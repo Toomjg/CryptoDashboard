@@ -18,7 +18,7 @@ export function runBacktest(candles, interval) {
   const timeToIdx = {}
   candles.forEach((c, i) => { timeToIdx[c.time] = i })
 
-  const isShortTerm = interval === '15m' || interval === '1h'
+  const isShortTerm = interval === '5m' || interval === '15m' || interval === '1h'
   // Máximo de velas a esperar antes de declarar timeout
   const maxHold = isShortTerm ? 24 : 15
 

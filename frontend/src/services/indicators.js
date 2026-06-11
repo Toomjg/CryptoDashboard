@@ -594,7 +594,7 @@ export function generateMarkers(candles, interval) {
   const { macdLine, signalLine } = macd(closes)
   const volAvgV = volumeAvg(volumes, 20)
 
-  const isShortTerm = interval === '15m' || interval === '1h'
+  const isShortTerm = interval === '5m' || interval === '15m' || interval === '1h'
   // Mínimo de velas entre señales para evitar señales duplicadas en rango
   const minGap = isShortTerm ? 5 : 3
 
