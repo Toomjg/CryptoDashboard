@@ -92,15 +92,29 @@ export default function App() {
     ? new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
     : null
 
-  // Trade box para vista simple: entrada + TP + SL calculados por la señal
-  const tradeBox = (data?.signal?.target && data.signal.overall !== 'NEUTRAL')
-    ? {
-        entry:     data.candles[data.candles.length - 1].close,
-        tp:        data.signal.target.tp,
-        sl:        data.signal.target.sl,
-        direction: data.signal.target.direction,
+  // Trade box: TP/SL siempre centrados en el precio en vivo usando el ATR guardado.
+  // Antes se calculaban sobre la última vela CERRADA, causando que el SL quedara
+  // por encima del precio actual cuando el mercado bajaba entre velas.
+  const tradeBox = (() => {
+    const sig = data?.signal
+    if (!sig?.target || sig.overall === 'NEUTRAL') return null
+    const { direction, atr: sigAtr } = sig.target
+    const entry = livePrice?.price ?? data.candles[data.candles.length - 1].close
+    const isLong = direction === 'LONG'
+    if (sigAtr && sigAtr > 0) {
+      return {
+        entry,
+        tp: isLong ? +(entry + sigAtr * 2.0).toFixed(2) : +(entry - sigAtr * 2.0).toFixed(2),
+        sl: isLong ? +(entry - sigAtr * 1.0).toFixed(2) : +(entry + sigAtr * 1.0).toFixed(2),
+        direction,
       }
-    : null
+    }
+    // Fallback: S/R absolutos — solo mostrar si el precio sigue dentro del rango válido
+    const { tp, sl } = sig.target
+    const valid = isLong ? (entry > sl && entry < tp) : (entry < sl && entry > tp)
+    if (!valid) return null
+    return { entry, tp, sl, direction }
+  })()
 
   return (
     <div style={{ background: '#0d0f1a', minHeight: '100vh', color: '#e2e8f0', fontFamily: 'Segoe UI, sans-serif' }}>

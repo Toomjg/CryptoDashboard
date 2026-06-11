@@ -551,20 +551,24 @@ export function generateSignal(candles) {
     }
   }
 
-  // Fallback con ATR (siempre activo si hay señal y no se encontraron niveles S/R)
-  if (!target && score !== 0) {
-    const highs  = candles.map(c => c.high);
-    const lows   = candles.map(c => c.low);
-    const atrV   = atr(highs, lows, closes, 14);
-    const curAtr = atrV[n];
-    if (curAtr !== null) {
-      if (isBull) {
-        target = { tp: +(price + curAtr * 2.0).toFixed(2), sl: +(price - curAtr * 1.0).toFixed(2), rr: 2.0, direction: 'LONG',  fromAtr: true };
-      } else {
-        target = { tp: +(price - curAtr * 2.0).toFixed(2), sl: +(price + curAtr * 1.0).toFixed(2), rr: 2.0, direction: 'SHORT', fromAtr: true };
-      }
+  // Siempre calcular ATR — lo guardamos en el target para poder recalcular
+  // TP/SL sobre el precio en vivo en lugar del precio de la vela cerrada
+  const highs  = candles.map(c => c.high);
+  const lows   = candles.map(c => c.low);
+  const atrAll = atr(highs, lows, closes, 14);
+  const curAtr = atrAll[n];
+
+  if (!target && score !== 0 && curAtr !== null) {
+    if (isBull) {
+      target = { tp: +(price + curAtr * 2.0).toFixed(2), sl: +(price - curAtr * 1.0).toFixed(2), rr: 2.0, direction: 'LONG',  fromAtr: true };
+    } else {
+      target = { tp: +(price - curAtr * 2.0).toFixed(2), sl: +(price + curAtr * 1.0).toFixed(2), rr: 2.0, direction: 'SHORT', fromAtr: true };
     }
   }
+
+  // Guardar ATR en todos los targets para que App.jsx pueda recentrar los niveles
+  // sobre el precio en vivo (evita SL por encima de entrada en LONGs, etc.)
+  if (target && curAtr !== null) target.atr = curAtr;
 
   // Confirmación de momentum: si RSI y MACD van en contra de la dirección,
   // la señal viene solo de indicadores rezagados (EMA, patrones) — reducirla
