@@ -37,8 +37,10 @@ async function sendSignalAlert({ symbol, interval, overall, score, entry, tp, sl
     )
     return { ok: true, data: res.data }
   } catch (err) {
-    console.error('Telegram error:', err.message)
-    return { ok: false, error: err.message }
+    // Devolver el error completo de Telegram para facilitar diagnóstico
+    const telegramError = err.response?.data || err.message
+    console.error('Telegram error:', telegramError)
+    return { ok: false, error: telegramError }
   }
 }
 

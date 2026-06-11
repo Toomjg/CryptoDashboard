@@ -30,6 +30,32 @@ router.post('/alert', async (req, res) => {
   }
 });
 
+// GET /api/market/alert/diagnose  — verifica la configuración sin enviar mensaje
+router.get('/alert/diagnose', async (req, res) => {
+  const axios = require('axios');
+  const token  = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.TELEGRAM_CHAT_ID;
+
+  const result = {
+    token_configured:   !!token,
+    chat_id_configured: !!chatId,
+    chat_id_value:      chatId || '(no configurado)',
+    bot_info:           null,
+    error:              null,
+  };
+
+  if (token) {
+    try {
+      const r = await axios.get(`https://api.telegram.org/bot${token}/getMe`, { timeout: 6000 });
+      result.bot_info = r.data.result;
+    } catch (e) {
+      result.error = e.response?.data || e.message;
+    }
+  }
+
+  res.json(result);
+});
+
 // GET /api/market/alert/test  — mensaje de prueba para verificar configuración Telegram
 router.get('/alert/test', async (req, res) => {
   try {
