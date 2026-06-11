@@ -177,7 +177,7 @@ export default function BacktestView({ interval, symbol }) {
     </div>
   )
 
-  const { trades, winRate, total, wins, losses, timeouts, profitFactor, avgWinPct, avgLossPct, equityCurve, maxDrawdown, finalEquity, byStrength } = result
+  const { trades, winRate, total, wins, losses, timeouts, profitFactor, avgWinPct, avgLossPct, equityCurve, maxDrawdown, finalEquity, byStrength, byDirection } = result
   const winColor = winRate >= 60 ? '#26a69a' : winRate >= 50 ? '#ff9800' : '#ef5350'
   const candleSpan = candles.length > 0
     ? `${fmtDate(candles[0].time)} → ${fmtDate(candles[candles.length - 1].time)}`
@@ -221,6 +221,31 @@ export default function BacktestView({ interval, symbol }) {
           <span style={{ fontSize: '0.65rem', color: '#718096' }}>■ {timeouts} timeouts (sin TP ni SL en plazo)</span>
         </div>
       </div>
+
+      {/* LONG vs SHORT */}
+      {byDirection && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.75rem' }}>
+          {['LONG', 'SHORT'].map(dir => {
+            const d = byDirection[dir]
+            if (!d || d.total === 0) return null
+            const color = dir === 'LONG' ? '#26a69a' : '#ef5350'
+            const wr    = d.winRate ?? 0
+            const barColor = wr >= 50 ? '#26a69a' : wr >= 40 ? '#ff9800' : '#ef5350'
+            return (
+              <div key={dir} style={{ background: '#131722', borderRadius: 8, padding: '0.65rem 1rem', border: `1px solid ${color}30` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 800, color }}>{dir === 'LONG' ? '▲ COMPRAS' : '▼ VENTAS'}</span>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: barColor }}>{wr}% win rate</span>
+                </div>
+                <div style={{ background: '#1e2130', borderRadius: 4, height: 6, marginBottom: 4 }}>
+                  <div style={{ width: `${wr}%`, height: '100%', background: barColor, borderRadius: 4 }} />
+                </div>
+                <span style={{ fontSize: '0.67rem', color: '#4a5568' }}>{d.total} señales · {d.wins} wins</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       {/* Efectividad por magnitud */}
       <div style={{ background: '#131722', borderRadius: 8, border: '1px solid #1e2130', marginBottom: '0.75rem', overflow: 'hidden' }}>

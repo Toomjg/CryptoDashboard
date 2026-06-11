@@ -33,9 +33,9 @@ export function runBacktest(candles, interval) {
     const curAtr = atrV[i]
     if (!curAtr || curAtr <= 0) continue
 
-    // TP y SL usando ATR (misma lógica que el fallback de generateSignal)
-    const tp = isBuy ? entry + curAtr * 1.5 : entry - curAtr * 1.5
-    const sl = isBuy ? entry - curAtr * 0.8 : entry + curAtr * 0.8
+    // R/R 2:1 → rentable a partir de 34% win rate
+    const tp = isBuy ? entry + curAtr * 2.0 : entry - curAtr * 2.0
+    const sl = isBuy ? entry - curAtr * 1.0 : entry + curAtr * 1.0
 
     let outcome    = 'TIMEOUT'
     let exitPrice  = candles[Math.min(i + maxHold, candles.length - 1)].close
@@ -78,13 +78,23 @@ export function runBacktest(candles, interval) {
   const avgWinPct   = wins.length   ? +(totalGain / wins.length).toFixed(2)   : 0
   const avgLossPct  = losses.length ? +(totalLoss / losses.length).toFixed(2) : 0
 
-  // Curva de capital normalizada (1% de riesgo por operación)
+  // Curva de capital normalizada (1% riesgo por operación, R/R 2:1)
   let equity = 0
   const equityCurve = trades.map(t => {
-    if (t.outcome === 'WIN')  equity += 1.5
+    if (t.outcome === 'WIN')  equity += 2.0
     if (t.outcome === 'LOSS') equity -= 1.0
     return +equity.toFixed(2)
   })
+
+  // Desglose por dirección (LONG vs SHORT)
+  const longs  = trades.filter(t => t.direction === 'LONG')
+  const shorts = trades.filter(t => t.direction === 'SHORT')
+  const longWins  = longs.filter(t => t.outcome === 'WIN')
+  const shortWins = shorts.filter(t => t.outcome === 'WIN')
+  const byDirection = {
+    LONG:  { total: longs.length,  wins: longWins.length,  winRate: longs.length  ? +(longWins.length  / longs.length  * 100).toFixed(1) : null },
+    SHORT: { total: shorts.length, wins: shortWins.length, winRate: shorts.length ? +(shortWins.length / shorts.length * 100).toFixed(1) : null },
+  }
 
   // Máximo drawdown
   let peak = 0, maxDrawdown = 0
@@ -120,8 +130,9 @@ export function runBacktest(candles, interval) {
     avgWinPct,
     avgLossPct,
     equityCurve,
-    maxDrawdown: +maxDrawdown.toFixed(2),
-    finalEquity: +equity.toFixed(2),
+    maxDrawdown:  +maxDrawdown.toFixed(2),
+    finalEquity:  +equity.toFixed(2),
     byStrength,
+    byDirection,
   }
 }

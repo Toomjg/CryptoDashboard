@@ -559,9 +559,9 @@ export function generateSignal(candles) {
     const curAtr = atrV[n];
     if (curAtr !== null) {
       if (isBull) {
-        target = { tp: +(price + curAtr * 1.5).toFixed(2), sl: +(price - curAtr * 0.8).toFixed(2), rr: 1.88, direction: 'LONG',  fromAtr: true };
+        target = { tp: +(price + curAtr * 2.0).toFixed(2), sl: +(price - curAtr * 1.0).toFixed(2), rr: 2.0, direction: 'LONG',  fromAtr: true };
       } else {
-        target = { tp: +(price - curAtr * 1.5).toFixed(2), sl: +(price + curAtr * 0.8).toFixed(2), rr: 1.88, direction: 'SHORT', fromAtr: true };
+        target = { tp: +(price - curAtr * 2.0).toFixed(2), sl: +(price + curAtr * 1.0).toFixed(2), rr: 2.0, direction: 'SHORT', fromAtr: true };
       }
     }
   }
@@ -657,6 +657,9 @@ export function generateMarkers(candles, interval) {
     if (va !== null && volumes[i] > va * 1.5) strength++
 
     strength = Math.min(5, strength)
+
+    // Solo mostrar magnitud 3+ — 1 y 2 son ruido según backtest
+    if (strength < 3) { lastIdx = i; continue }
 
     markers.push({
       time:     times[i],
