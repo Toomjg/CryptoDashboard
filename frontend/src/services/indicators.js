@@ -679,6 +679,44 @@ export function generateMarkers(candles, interval) {
   return markers.slice(-60)
 }
 
+// ─── Señal activa unificada — derivada del sistema de marcadores ──────────────
+// Esta es la fuente de verdad para overlay, cuadro TP/SL y alertas Telegram.
+// Un sistema, un criterio: si hay flecha también hay cuadro y notificación.
+export function getActiveSignal(candles, markers, interval) {
+  if (!candles || !markers || markers.length === 0) return null
+
+  const isShortTerm = ['5m', '15m', '1h'].includes(interval)
+  // Ventana de "frescura": cuántas velas cerradas hacia atrás cuenta como señal activa
+  const freshN  = isShortTerm ? 8 : 5
+  const closed  = candles.slice(0, -1)
+  const freshTs = new Set(closed.slice(-freshN).map(c => c.time))
+
+  // Buscar el marcador más reciente dentro de la ventana fresca
+  for (let i = markers.length - 1; i >= 0; i--) {
+    const m         = markers[i]
+    const magnitude = parseInt(m.text, 10)
+    if (!freshTs.has(m.time)) break  // los marcadores están en orden cronológico
+
+    if (magnitude < 3) return null  // magnitud 1-2 son ruido (confirmado por backtest)
+
+    const isLong  = m.position === 'belowBar'
+    const overall = magnitude >= 4
+      ? (isLong ? 'COMPRA_FUERTE' : 'VENTA_FUERTE')
+      : (isLong ? 'COMPRA'        : 'VENTA')
+
+    // ATR en la vela del marcador para TP/SL
+    const highs      = candles.map(c => c.high)
+    const lows       = candles.map(c => c.low)
+    const closes     = candles.map(c => c.close)
+    const atrV       = atr(highs, lows, closes, 14)
+    const markerIdx  = candles.findIndex(c => c.time === m.time)
+    const markerAtr  = markerIdx >= 0 ? atrV[markerIdx] : null
+
+    return { overall, magnitude, isLong, direction: isLong ? 'LONG' : 'SHORT', atr: markerAtr, markerTime: m.time }
+  }
+  return null
+}
+
 // ─── Series para gráficos ─────────────────────────────────────────────────────
 
 export function toSeries(values, times) {

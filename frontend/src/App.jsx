@@ -17,15 +17,13 @@ const INTERVALS = [
   { value: '1d',  label: '1D'  },
 ]
 
-// Mapeo overall → número 1-10 + color (para vista simple)
-const SCORE_MAP = {
-  VENTA_FUERTE:  { num: 1, color: '#b71c1c', label: 'VENTA FUERTE'  },
-  VENTA:         { num: 2, color: '#ef5350', label: 'VENTA'         },
-  VENTA_DEBIL:   { num: 2, color: '#ff9800', label: 'VENTA DÉBIL'   },
-  NEUTRAL:       { num: 3, color: '#9e9e9e', label: 'NEUTRAL'       },
-  COMPRA_DEBIL:  { num: 4, color: '#8bc34a', label: 'COMPRA DÉBIL'  },
-  COMPRA:        { num: 4, color: '#4caf50', label: 'COMPRA'        },
-  COMPRA_FUERTE: { num: 5, color: '#26a69a', label: 'COMPRA FUERTE' },
+// Overlay muestra la magnitud del marcador activo (mismo sistema que las flechas)
+const DIRECTION_CFG = {
+  COMPRA:        { color: '#4caf50', label: '▲ COMPRA'       },
+  COMPRA_FUERTE: { color: '#26a69a', label: '▲ COMPRA FUERTE'},
+  VENTA:         { color: '#ef5350', label: '▼ VENTA'        },
+  VENTA_FUERTE:  { color: '#b71c1c', label: '▼ VENTA FUERTE' },
+  NEUTRAL:       { color: '#9e9e9e', label: 'NEUTRAL'        },
 }
 
 function fmt(n, decimals = 2) {
@@ -56,10 +54,10 @@ function PriceHeader({ livePrice }) {
   )
 }
 
-// Overlay compacto en esquina superior izquierda para vista simple
+// Overlay compacto — mismo criterio que las flechas del gráfico
 function ScoreOverlay({ signal }) {
-  if (!signal) return null
-  const cfg = SCORE_MAP[signal.overall] || SCORE_MAP.NEUTRAL
+  if (!signal || signal.overall === 'NEUTRAL' || !signal.magnitude) return null
+  const cfg = DIRECTION_CFG[signal.overall] || DIRECTION_CFG.NEUTRAL
   return (
     <div style={{
       position: 'absolute', top: 10, left: 10, zIndex: 10,
@@ -73,7 +71,7 @@ function ScoreOverlay({ signal }) {
         fontSize: '1.6rem', fontWeight: 900, color: cfg.color,
         lineHeight: 1, fontVariantNumeric: 'tabular-nums',
       }}>
-        {cfg.num}
+        {signal.magnitude}
       </span>
       <div style={{ fontSize: '0.72rem', fontWeight: 700, color: cfg.color }}>
         {cfg.label}

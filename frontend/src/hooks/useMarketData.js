@@ -3,7 +3,7 @@ import { getKlines, getTicker } from '../services/binance'
 import {
   ema, rsi, macd, volumeAvg,
   generateSignal, scoreToOverall,
-  generateMarkers,
+  generateMarkers, getActiveSignal,
   toSeries, toHistogramSeries,
 } from '../services/indicators'
 
@@ -21,42 +21,45 @@ async function fetchNews(symbol) {
   }
 }
 
-async function maybeAlert(symbol, interval, signal, candles) {
-  if (!STRONG_SIGNALS.has(signal.overall)) return
+// Alerta basada en el sistema de marcadores — mismo criterio que flechas y cuadro TP/SL.
+// Dispara cuando hay un marcador fresco de magnitud ≥4 confirmado en la TF superior.
+async function maybeAlert(symbol, interval, activeSignal, candles) {
+  if (!activeSignal || activeSignal.magnitude < 4) return   // solo mag 4+
 
-  // Debounce por par + temporalidad
   const key       = `alert_${symbol}_${interval}`
   const lastAlert = localStorage.getItem(key)
   if (lastAlert && Date.now() - parseInt(lastAlert) < ALERT_DEBOUNCE_MS) return
 
-  // Verificar en la temporalidad superior
   const higherTf = HIGHER_TF[interval]
   if (!higherTf) return
 
   try {
-    const higherCandles = await getKlines(symbol, higherTf, 300)
-    const higherSignal  = generateSignal(higherCandles)
-    const isBull        = signal.overall.includes('COMPRA')
-    const higherConfirms = isBull
-      ? higherSignal.overall === 'COMPRA' || higherSignal.overall === 'COMPRA_FUERTE'
-      : higherSignal.overall === 'VENTA'  || higherSignal.overall === 'VENTA_FUERTE'
-    if (!higherConfirms) return
+    // Verificar en TF superior con el mismo sistema de marcadores
+    const higherCandles = await getKlines(symbol, higherTf, 500)
+    const higherMarkers = generateMarkers(higherCandles, higherTf)
+    const higherSignal  = getActiveSignal(higherCandles, higherMarkers, higherTf)
+
+    // La TF superior debe confirmar la misma dirección (cualquier magnitud)
+    if (!higherSignal || higherSignal.isLong !== activeSignal.isLong) return
 
     localStorage.setItem(key, String(Date.now()))
 
-    const entry = candles[candles.length - 1].close
+    // TP/SL centrados en precio actual usando ATR del marcador
+    const entry = candles[candles.length - 2].close  // última vela cerrada
+    const sigAtr = activeSignal.atr
+    const isLong = activeSignal.isLong
+    const tp = sigAtr ? +(entry + (isLong ? 1 : -1) * sigAtr * 2).toFixed(2) : null
+    const sl = sigAtr ? +(entry + (isLong ? -1 : 1) * sigAtr * 1).toFixed(2) : null
+
     await fetch('/api/market/alert', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         symbol, interval,
-        overall:      signal.overall,
-        score:        signal.score,
-        entry,
-        tp:           signal.target?.tp   ?? null,
-        sl:           signal.target?.sl   ?? null,
-        rr:           signal.target?.rr   ?? null,
-        fromAtr:      signal.target?.fromAtr ?? false,
+        overall:      activeSignal.overall,
+        score:        activeSignal.magnitude,
+        strength:     String(activeSignal.magnitude),
+        entry, tp, sl, rr: 2.0, fromAtr: true,
         higherTf,
         higherOverall: higherSignal.overall,
       }),
@@ -78,24 +81,39 @@ function buildData(candles, ticker, newsData, interval) {
   const { macdLine, signalLine, histogram } = macd(closes)
   const volAvgV = volumeAvg(volumes, 20)
 
-  // Usar solo velas CERRADAS para la señal — la última vela sigue abierta
-  // y cambiaría cada segundo, haciendo las señales inestables
-  const signal = generateSignal(candles.slice(0, -1))
-
-  // Integrar sentimiento al score
-  signal.score   += newsData.score
-  signal.maxScore = 13
-  signal.overall  = scoreToOverall(signal.score)
-  signal.details.noticias = {
+  // Score compuesto — solo para el panel "Completo" con desglose de indicadores
+  const compositeSignal = generateSignal(candles.slice(0, -1))
+  compositeSignal.score   += newsData.score
+  compositeSignal.maxScore = 13
+  compositeSignal.overall  = scoreToOverall(compositeSignal.score)
+  compositeSignal.details.noticias = {
     score: newsData.score, signal: newsData.signal, available: newsData.available,
   }
 
-  const markers = generateMarkers(candles, interval)
+  const markers      = generateMarkers(candles, interval)
+  // Señal activa unificada — fuente de verdad para overlay, cuadro TP/SL y alertas
+  const activeSignal = getActiveSignal(candles, markers, interval)
+
+  // Para el panel Completo seguimos exponiendo el score compuesto en signal.details
+  const signal = {
+    ...(activeSignal
+      ? {
+          overall:   activeSignal.overall,
+          magnitude: activeSignal.magnitude,
+          direction: activeSignal.direction,
+          target: activeSignal.atr
+            ? { direction: activeSignal.direction, atr: activeSignal.atr }
+            : null,
+        }
+      : { overall: 'NEUTRAL', magnitude: 0, target: null }),
+    score:    compositeSignal.score,
+    maxScore: compositeSignal.maxScore,
+    details:  compositeSignal.details,
+  }
 
   return {
-    ticker,
-    candles,
-    markers,
+    ticker, candles, markers,
+    activeSignal,  // expuesto para maybeAlert y tradeBox
     indicators: {
       ema20:         toSeries(ema20v,  times),
       ema50:         toSeries(ema50v,  times),
@@ -135,8 +153,8 @@ export function useMarketData(symbol, interval) {
           const built = buildData(candles, ticker, newsData, interval)
           setData(built)
           setLivePrice(ticker)
-          // Verificar si hay señal fuerte confirmada en 2 TF → alerta Telegram
-          maybeAlert(symbol, interval, built.signal, candles)
+          // Alerta Telegram basada en el mismo sistema de marcadores que las flechas
+          maybeAlert(symbol, interval, built.activeSignal, candles)
         }
       } catch (e) {
         if (!cancelled) setError('Error al cargar datos de Binance')
