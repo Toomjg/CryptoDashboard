@@ -595,86 +595,78 @@ export function generateMarkers(candles, interval) {
   const volAvgV = volumeAvg(volumes, 20)
 
   const isShortTerm = interval === '15m' || interval === '1h'
-  const threshold   = isShortTerm ? 5 : 6
+  // Mínimo de velas entre señales para evitar señales duplicadas en rango
+  const minGap = isShortTerm ? 5 : 3
 
   const markers = []
-  let lastIdx   = -20
+  let lastIdx   = -minGap
 
   for (let i = 55; i < candles.length; i++) {
-    let score = 0
+    const ml  = macdLine[i],     ml0 = macdLine[i - 1]
+    const sig = signalLine[i],   sig0 = signalLine[i - 1]
+    if (ml === null || sig === null || ml0 === null || sig0 === null) continue
 
-    // RSI
-    const r = rsiV[i]
+    // ── Disparador primario: cruce MACD fresco ─────────────────────────
+    const freshBull = ml0 <= sig0 && ml > sig   // cruce alcista
+    const freshBear = ml0 >= sig0 && ml < sig   // cruce bajista
+    if (!freshBull && !freshBear) continue
+    if (i - lastIdx < minGap)    continue
+
+    const close = closes[i]
+    const e20   = ema20v[i], e50 = ema50v[i], e200 = ema200v[i]
+    const r     = rsiV[i]
+    const va    = volAvgV[i]
+
+    // ── Filtros de calidad: si no se cumplen, descartar la señal ───────
+    if (freshBull) {
+      // No comprar si RSI ya está sobrecomprado (>= 65)
+      if (r !== null && r >= 65) continue
+      // No comprar contra tendencia fuerte (precio bajo EMA50 Y EMA200)
+      if (e50 !== null && e200 !== null && close < e50 && close < e200) continue
+    }
+    if (freshBear) {
+      // No vender si RSI ya está sobrevendido (<= 35)
+      if (r !== null && r <= 35) continue
+      // No vender contra tendencia fuerte (precio sobre EMA50 Y EMA200)
+      if (e50 !== null && e200 !== null && close > e50 && close > e200) continue
+    }
+
+    // ── Magnitud 1-5: confirmaciones adicionales ───────────────────────
+    // Cada condición cumplida suma 1 punto de fuerza
+    let strength = 1  // el cruce MACD ya garantiza magnitud mínima 1
+
+    // RSI en zona favorable (no extremo, con recorrido)
     if (r !== null) {
-      if      (r <= 30) score += 3
-      else if (r <= 40) score += 1
-      else if (r >= 70) score -= 3
-      else if (r >= 60) score -= 1
+      if (freshBull && r <= 50) strength++       // RSI aún no sobrecomprado
+      if (freshBear && r >= 50) strength++       // RSI aún no sobrevendido
     }
 
-    // MACD
-    const ml = macdLine[i], ml0 = macdLine[i - 1]
-    const sl = signalLine[i], sl0 = signalLine[i - 1]
-    if (ml !== null && sl !== null && ml0 !== null && sl0 !== null) {
-      if      (ml0 <= sl0 && ml > sl) score += 3
-      else if (ml0 >= sl0 && ml < sl) score -= 3
-      else if (ml > sl)               score += 1
-      else if (ml < sl)               score -= 1
+    // EMA50 alineada con la señal
+    if (e50 !== null) {
+      if (freshBull && close > e50) strength++
+      if (freshBear && close < e50) strength++
     }
 
-    // EMAs
-    const close = closes[i], e20 = ema20v[i], e50 = ema50v[i], e200 = ema200v[i]
-    if (e20 !== null && e50 !== null) {
-      if      (close > e20 && e20 > e50) score += 2
-      else if (close > e20)              score += 1
-      else if (close < e20 && e20 < e50) score -= 2
-      else if (close < e20)              score -= 1
-    }
-
-    // Volumen
-    const va = volAvgV[i]
-    if (va !== null && volumes[i] > va * 1.5) {
-      score += closes[i] >= candles[i].open ? 1 : -1
-    }
-
-    // Filtro EMA200: descartar señales contra la tendencia principal
+    // EMA200 alineada (tendencia de largo plazo a favor)
     if (e200 !== null) {
-      if (score > 0 && close < e200) score = Math.floor(score * 0.5)
-      if (score < 0 && close > e200) score = Math.ceil(score  * 0.5)
+      if (freshBull && close > e200) strength++
+      if (freshBear && close < e200) strength++
     }
 
-    if (i - lastIdx >= 10) {
-      // Fuerza 1-5: score 5→1, 6→2, 7→3, 8→4, 9→5
-      const strength = Math.max(1, Math.min(5, Math.abs(score) - 4))
-      const isBuy    = score >= threshold
-      const isSell   = score <= -threshold
+    // Volumen alto confirma el cruce
+    if (va !== null && volumes[i] > va * 1.5) strength++
 
-      if (isBuy || isSell) {
-        // Anti-señales-falsas en corto plazo:
-        // 1. Histograma MACD debe estar acelerando en la dirección de la señal
-        // 2. La vela debe cerrar en la misma dirección (no doji ni contra-tendencia)
-        let valid = true
-        if (isShortTerm && ml !== null && sl !== null && ml0 !== null && sl0 !== null) {
-          const hist     = ml  - sl
-          const hist0    = ml0 - sl0
-          const bullCandle = closes[i] >= candles[i].open
-          if (isBuy  && (hist <= hist0 || !bullCandle)) valid = false
-          if (isSell && (hist >= hist0 ||  bullCandle)) valid = false
-        }
+    strength = Math.min(5, strength)
 
-        if (valid) {
-          markers.push({
-            time:     times[i],
-            position: isBuy ? 'belowBar' : 'aboveBar',
-            color:    '#FFD700',
-            shape:    isBuy ? 'arrowUp' : 'arrowDown',
-            size:     isShortTerm ? 1 : 2,
-            text:     String(strength),
-          })
-          lastIdx = i
-        }
-      }
-    }
+    markers.push({
+      time:     times[i],
+      position: freshBull ? 'belowBar' : 'aboveBar',
+      color:    '#FFD700',
+      shape:    freshBull ? 'arrowUp' : 'arrowDown',
+      size:     isShortTerm ? 1 : 2,
+      text:     String(strength),
+    })
+    lastIdx = i
   }
 
   return markers.slice(-60)
