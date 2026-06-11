@@ -4,10 +4,11 @@ import { runBacktest } from '../services/backtest'
 
 // Cuántas velas traer por temporalidad
 const CANDLES_BY_INTERVAL = {
+  '5m':  8000,  // ~27 días (8 requests × 1000)
   '15m': 3000,  // ~31 días
   '1h':  3000,  // ~125 días
   '4h':  2000,  // ~333 días
-  '1d':  1000,  // ~1000 días (Binance puede no tener más)
+  '1d':  1000,  // ~1000 días
 }
 
 function fmtP(v) {
