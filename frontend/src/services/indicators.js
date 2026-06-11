@@ -566,6 +566,13 @@ export function generateSignal(candles) {
     }
   }
 
+  // Confirmación de momentum: si RSI y MACD van en contra de la dirección,
+  // la señal viene solo de indicadores rezagados (EMA, patrones) — reducirla
+  const rsiScore  = details.rsi?.score  || 0
+  const macdScore = details.macd?.score || 0
+  if (score > 0 && rsiScore <= 0 && macdScore <= 0) score = Math.floor(score * 0.5)
+  if (score < 0 && rsiScore >= 0 && macdScore >= 0) score = Math.ceil(score  * 0.5)
+
   return { overall: scoreToOverall(score), score, maxScore: 22, details, target };
 }
 
@@ -582,6 +589,7 @@ export function generateMarkers(candles, interval) {
 
   const ema20v  = ema(closes, 20)
   const ema50v  = ema(closes, 50)
+  const ema200v = ema(closes, 200)
   const rsiV    = rsi(closes, 14)
   const { macdLine, signalLine } = macd(closes)
   const volAvgV = volumeAvg(volumes, 20)
@@ -615,7 +623,7 @@ export function generateMarkers(candles, interval) {
     }
 
     // EMAs
-    const close = closes[i], e20 = ema20v[i], e50 = ema50v[i]
+    const close = closes[i], e20 = ema20v[i], e50 = ema50v[i], e200 = ema200v[i]
     if (e20 !== null && e50 !== null) {
       if      (close > e20 && e20 > e50) score += 2
       else if (close > e20)              score += 1
@@ -627,6 +635,12 @@ export function generateMarkers(candles, interval) {
     const va = volAvgV[i]
     if (va !== null && volumes[i] > va * 1.5) {
       score += closes[i] >= candles[i].open ? 1 : -1
+    }
+
+    // Filtro EMA200: descartar señales contra la tendencia principal
+    if (e200 !== null) {
+      if (score > 0 && close < e200) score = Math.floor(score * 0.5)
+      if (score < 0 && close > e200) score = Math.ceil(score  * 0.5)
     }
 
     if (i - lastIdx >= 10) {
