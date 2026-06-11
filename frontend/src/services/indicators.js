@@ -357,12 +357,12 @@ export function detectCandlePatterns(candles) {
 // ─── Score general ────────────────────────────────────────────────────────────
 
 export function scoreToOverall(score) {
-  if      (score >= 9)  return 'COMPRA_FUERTE';
-  else if (score >= 5)  return 'COMPRA';
-  else if (score >= 2)  return 'COMPRA_DEBIL';
-  else if (score <= -9) return 'VENTA_FUERTE';
-  else if (score <= -5) return 'VENTA';
-  else if (score <= -2) return 'VENTA_DEBIL';
+  if      (score >= 11) return 'COMPRA_FUERTE';
+  else if (score >= 7)  return 'COMPRA';
+  else if (score >= 3)  return 'COMPRA_DEBIL';
+  else if (score <= -11) return 'VENTA_FUERTE';
+  else if (score <= -7) return 'VENTA';
+  else if (score <= -3) return 'VENTA_DEBIL';
   else                  return 'NEUTRAL';
 }
 

@@ -195,7 +195,11 @@ export default function App() {
             height: '100%', background: '#131722', borderRadius: 10,
             border: '1px solid #1e2130', overflow: 'hidden',
           }}>
-            <SignalsTable onSelectSymbol={sym => { setSymbol(sym); setView('simple') }} />
+            <SignalsTable onSelectSymbol={(sym, iv) => {
+              setSymbol(sym)
+              if (iv) setInterval(iv)
+              setView('simple')
+            }} />
           </div>
         </div>
       )}

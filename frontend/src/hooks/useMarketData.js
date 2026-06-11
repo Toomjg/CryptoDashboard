@@ -78,7 +78,9 @@ function buildData(candles, ticker, newsData, interval) {
   const { macdLine, signalLine, histogram } = macd(closes)
   const volAvgV = volumeAvg(volumes, 20)
 
-  const signal = generateSignal(candles)
+  // Usar solo velas CERRADAS para la señal — la última vela sigue abierta
+  // y cambiaría cada segundo, haciendo las señales inestables
+  const signal = generateSignal(candles.slice(0, -1))
 
   // Integrar sentimiento al score
   signal.score   += newsData.score
