@@ -658,11 +658,103 @@ function generateMarkers5m(candles) {
   return markers.slice(-60)
 }
 
+// ─── Estrategia 5m: UT Bot Alerts (ATR trailing stop crossover) ───────────────
+// Algoritmo original de UT Bot: trailing stop dinámico basado en ATR.
+// Señal cuando el precio cruza el trailing stop → más rápido que cualquier cruce de medias.
+function generateMarkers5mUTBot(candles, keyValue = 1, atrPeriod = 10) {
+  const closes  = candles.map(c => c.close)
+  const highs   = candles.map(c => c.high)
+  const lows    = candles.map(c => c.low)
+  const volumes = candles.map(c => c.volume)
+  const times   = candles.map(c => c.time)
+
+  const atrV    = atr(highs, lows, closes, atrPeriod)
+  const rsiV    = rsi(closes, 14)
+  const volAvgV = volumeAvg(volumes, 20)
+
+  // Calcular ATR trailing stop (lógica Pine Script original)
+  const nLoss     = atrV.map(v => v !== null ? v * keyValue : null)
+  const trailStop = new Array(closes.length).fill(null)
+
+  for (let i = 1; i < closes.length; i++) {
+    const loss = nLoss[i]
+    if (loss === null) continue
+    const c = closes[i], cp = closes[i - 1]
+    const prev = trailStop[i - 1]
+    if (prev === null) { trailStop[i] = c - loss; continue }
+
+    if      (c > prev && cp > prev) trailStop[i] = Math.max(prev, c - loss)
+    else if (c < prev && cp < prev) trailStop[i] = Math.min(prev, c + loss)
+    else if (c > prev)              trailStop[i] = c - loss
+    else                            trailStop[i] = c + loss
+  }
+
+  const markers = []
+  let lastIdx = -6  // 30 min mínimo entre señales
+
+  for (let i = atrPeriod + 2; i < candles.length; i++) {
+    const c  = closes[i],    cp  = closes[i - 1]
+    const ts = trailStop[i], tsp = trailStop[i - 1]
+    if (ts === null || tsp === null) continue
+    if (i - lastIdx < 6) continue
+
+    // Cruce precio vs trailing stop
+    const bullCross = cp <= tsp && c > ts
+    const bearCross = cp >= tsp && c < ts
+    if (!bullCross && !bearCross) continue
+
+    const r  = rsiV[i]
+    const va = volAvgV[i]
+
+    // Filtro RSI: no entrar en zona extrema
+    if (r !== null && bullCross && r >= 72) continue
+    if (r !== null && bearCross && r <= 28) continue
+
+    // Magnitud: base 2 (el cruce UT Bot ya tiene alto valor) + confirmaciones
+    let strength = 2
+
+    // Volumen confirma la ruptura
+    if (va !== null && volumes[i] > va * 1.3) strength++
+
+    // ATR por encima de su promedio reciente → movimiento más fuerte
+    const recentAtr = atrV.slice(Math.max(0, i - 10), i).filter(v => v !== null)
+    if (recentAtr.length > 0) {
+      const avgAtr = recentAtr.reduce((a, b) => a + b, 0) / recentAtr.length
+      if (atrV[i] > avgAtr * 1.15) strength++
+    }
+
+    // RSI en zona con recorrido
+    if (r !== null) {
+      if (bullCross && r < 55) strength++
+      if (bearCross && r > 45) strength++
+    }
+
+    strength = Math.min(5, strength)
+    if (strength < 3) { lastIdx = i; continue }
+
+    markers.push({
+      time:     times[i],
+      position: bullCross ? 'belowBar' : 'aboveBar',
+      color:    '#FFD700',
+      shape:    bullCross ? 'arrowUp' : 'arrowDown',
+      size:     1,
+      text:     String(strength),
+    })
+    lastIdx = i
+  }
+
+  return markers.slice(-60)
+}
+
 // ─── Marcadores históricos de señal ──────────────────────────────────────────
 
-export function generateMarkers(candles, interval) {
-  // 5m usa su propia estrategia optimizada (EMA 9/21 crossover)
-  if (interval === '5m') return generateMarkers5m(candles)
+// strategy: 'ema' (EMA 9/21) | 'utbot' (UT Bot trailing stop) — solo aplica a 5m
+export function generateMarkers(candles, interval, strategy = 'ema') {
+  if (interval === '5m') {
+    return strategy === 'utbot'
+      ? generateMarkers5mUTBot(candles)
+      : generateMarkers5m(candles)
+  }
   if (!candles || candles.length < 60) return []
 
   const closes  = candles.map(c => c.close)

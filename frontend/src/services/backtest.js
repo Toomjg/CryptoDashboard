@@ -3,10 +3,10 @@ import { atr, generateMarkers } from './indicators'
 // Ejecuta backtest sobre las velas históricas usando las mismas señales
 // que genera generateMarkers. Para cada señal mira las velas siguientes
 // y detecta si el precio llegó al TP o al SL primero.
-export function runBacktest(candles, interval) {
+export function runBacktest(candles, interval, strategy = 'ema') {
   if (!candles || candles.length < 100) return null
 
-  const markers = generateMarkers(candles, interval)
+  const markers = generateMarkers(candles, interval, strategy)
   if (!markers.length) return { trades: [], total: 0, winRate: 0, wins: 0, losses: 0, timeouts: 0, profitFactor: null, avgWinPct: 0, avgLossPct: 0, equityCurve: [] }
 
   const highs  = candles.map(c => c.high)

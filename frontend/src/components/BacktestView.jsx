@@ -129,10 +129,11 @@ function StrengthRow({ level, data }) {
 }
 
 export default function BacktestView({ interval, symbol }) {
-  const [candles,  setCandles]  = useState(null)
-  const [progress, setProgress] = useState(0)
-  const [loading,  setLoading]  = useState(true)
-  const [error,    setError]    = useState(null)
+  const [candles,   setCandles]   = useState(null)
+  const [progress,  setProgress]  = useState(0)
+  const [loading,   setLoading]   = useState(true)
+  const [error,     setError]     = useState(null)
+  const [strategy5m, setStrategy5m] = useState('ema')  // 'ema' | 'utbot'
 
   useEffect(() => {
     let cancelled = false
@@ -151,8 +152,8 @@ export default function BacktestView({ interval, symbol }) {
 
   const result = useMemo(() => {
     if (!candles || candles.length < 100) return null
-    return runBacktest(candles, interval)
-  }, [candles, interval])
+    return runBacktest(candles, interval, interval === '5m' ? strategy5m : 'ema')
+  }, [candles, interval, strategy5m])
 
   // Loading
   if (loading) return (
@@ -188,13 +189,37 @@ export default function BacktestView({ interval, symbol }) {
     <div style={{ padding: '1rem', overflowY: 'auto', height: '100%' }}>
 
       {/* Título */}
-      <div style={{ marginBottom: '0.75rem' }}>
-        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: '#e2e8f0' }}>
-          Backtest — {symbol.replace('USDT', '/USDT')} {interval}
-        </span>
-        <div style={{ fontSize: '0.68rem', color: '#4a5568', marginTop: 2 }}>
-          {candles?.length} velas · {candleSpan} · {interval === '5m' ? 'EMA 9/21 cross' : 'MACD cross'} · TP = 2×ATR · SL = 1×ATR
+      <div style={{ marginBottom: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+        <div>
+          <span style={{ fontWeight: 700, fontSize: '0.95rem', color: '#e2e8f0' }}>
+            Backtest — {symbol.replace('USDT', '/USDT')} {interval}
+          </span>
+          <div style={{ fontSize: '0.68rem', color: '#4a5568', marginTop: 2 }}>
+            {candles?.length} velas · {candleSpan} · TP = 2×ATR · SL = 1×ATR
+          </div>
         </div>
+        {interval === '5m' && (
+          <div style={{ display: 'flex', background: '#0d0f1a', borderRadius: 7, overflow: 'hidden', border: '1px solid #2a2d3e' }}>
+            {[
+              { id: 'ema',   label: 'EMA 9/21',  desc: 'Cruce de medias rápidas' },
+              { id: 'utbot', label: 'UT Bot',     desc: 'ATR trailing stop' },
+            ].map(s => (
+              <button
+                key={s.id}
+                onClick={() => setStrategy5m(s.id)}
+                title={s.desc}
+                style={{
+                  border: 'none', padding: '5px 14px', fontSize: '0.78rem', fontWeight: 700,
+                  cursor: 'pointer', transition: 'all 0.15s',
+                  background: strategy5m === s.id ? '#9c27b0' : 'transparent',
+                  color:      strategy5m === s.id ? '#fff'    : '#718096',
+                }}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Stats generales */}
