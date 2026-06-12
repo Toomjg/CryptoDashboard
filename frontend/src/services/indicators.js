@@ -580,11 +580,89 @@ export function generateSignal(candles) {
   return { overall: scoreToOverall(score), score, maxScore: 22, details, target };
 }
 
+// ─── Estrategia específica para 5m: EMA 9/21 crossover ───────────────────────
+// Para 5m el MACD es demasiado lento (EMA 26 = 130 min). El cruce EMA 9/21 es
+// más rápido y captura el movimiento antes de que termine.
+function generateMarkers5m(candles) {
+  const closes  = candles.map(c => c.close)
+  const volumes = candles.map(c => c.volume)
+  const times   = candles.map(c => c.time)
+
+  const ema9v   = ema(closes,  9)   // ~45 min
+  const ema21v  = ema(closes, 21)   // ~105 min
+  const ema20v  = ema(closes, 20)   // filtro de tendencia (~100 min)
+  const ema50v  = ema(closes, 50)   // tendencia de corto plazo (~250 min / 4h)
+  const rsiV    = rsi(closes, 14)
+  const volAvgV = volumeAvg(volumes, 20)
+
+  const minGap = 6   // mínimo 30 min entre señales
+  const markers = []
+  let lastIdx = -minGap
+
+  for (let i = 55; i < candles.length; i++) {
+    const e9  = ema9v[i],  e9p  = ema9v[i - 1]
+    const e21 = ema21v[i], e21p = ema21v[i - 1]
+    if (e9 === null || e21 === null || e9p === null || e21p === null) continue
+    if (i - lastIdx < minGap) continue
+
+    // Disparador: cruce fresco EMA 9/21
+    const freshBull = e9p <= e21p && e9 > e21
+    const freshBear = e9p >= e21p && e9 < e21
+    if (!freshBull && !freshBear) continue
+
+    const close = closes[i]
+    const e20   = ema20v[i]
+    const e50   = ema50v[i]
+    const r     = rsiV[i]
+    const va    = volAvgV[i]
+
+    // Filtro duro: descartar si EMA 20 y EMA 50 van en contra
+    if (freshBull && e20 !== null && e50 !== null && close < e20 && close < e50) continue
+    if (freshBear && e20 !== null && e50 !== null && close > e20 && close > e50) continue
+
+    // RSI: no entrar si ya está en zona extrema
+    if (r !== null && freshBull && r >= 70) continue
+    if (r !== null && freshBear && r <= 30) continue
+
+    // Magnitud: 1 base + hasta 4 confirmaciones
+    let strength = 1
+
+    if (r !== null) {
+      if (freshBull && r <= 55) strength++   // RSI con recorrido alcista
+      if (freshBear && r >= 45) strength++   // RSI con recorrido bajista
+    }
+    if (e20 !== null) {
+      if (freshBull && close > e20) strength++   // precio sobre EMA 20
+      if (freshBear && close < e20) strength++
+    }
+    if (e50 !== null) {
+      if (freshBull && close > e50) strength++   // tendencia 4h a favor
+      if (freshBear && close < e50) strength++
+    }
+    if (va !== null && volumes[i] > va * 1.3) strength++  // volumen confirma
+
+    strength = Math.min(5, strength)
+    if (strength < 3) { lastIdx = i; continue }
+
+    markers.push({
+      time:     times[i],
+      position: freshBull ? 'belowBar' : 'aboveBar',
+      color:    '#FFD700',
+      shape:    freshBull ? 'arrowUp' : 'arrowDown',
+      size:     1,
+      text:     String(strength),
+    })
+    lastIdx = i
+  }
+
+  return markers.slice(-60)
+}
+
 // ─── Marcadores históricos de señal ──────────────────────────────────────────
-// Escanea todos los candles y coloca flechas donde el puntaje compuesto supera
-// el umbral. Usa RSI + MACD + EMA + Volumen (misma lógica que el panel de señal).
 
 export function generateMarkers(candles, interval) {
+  // 5m usa su propia estrategia optimizada (EMA 9/21 crossover)
+  if (interval === '5m') return generateMarkers5m(candles)
   if (!candles || candles.length < 60) return []
 
   const closes  = candles.map(c => c.close)

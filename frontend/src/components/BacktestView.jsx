@@ -193,7 +193,7 @@ export default function BacktestView({ interval, symbol }) {
           Backtest — {symbol.replace('USDT', '/USDT')} {interval}
         </span>
         <div style={{ fontSize: '0.68rem', color: '#4a5568', marginTop: 2 }}>
-          {candles?.length} velas · {candleSpan} · TP = 1.5×ATR · SL = 0.8×ATR
+          {candles?.length} velas · {candleSpan} · {interval === '5m' ? 'EMA 9/21 cross' : 'MACD cross'} · TP = 2×ATR · SL = 1×ATR
         </div>
       </div>
 
