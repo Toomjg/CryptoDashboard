@@ -85,6 +85,18 @@ export function macd(closes) {
   return { macdLine, signalLine, histogram };
 }
 
+// R/R por temporalidad — targets más amplios a mayor duración del trade
+export const RR_CONFIG = {
+  '5m':  { tp: 2.0, sl: 1.0 },  // scalp: breakeven ≥34% WR
+  '15m': { tp: 2.0, sl: 1.0 },
+  '1h':  { tp: 2.5, sl: 1.0 },  // intraday: breakeven ≥29% WR
+  '4h':  { tp: 3.0, sl: 1.0 },  // swing: breakeven ≥25% WR
+  '1d':  { tp: 3.0, sl: 1.5 },  // posicional: SL más amplio
+  '1w':  { tp: 4.0, sl: 2.0 },  // largo plazo
+}
+// Rebote contra-tendencia: objetivo rápido, SL ajustado (R/R 2:1 con targets chicos)
+export const BOUNCE_RR = { tp: 1.0, sl: 0.5 }
+
 export function volumeAvg(volumes, period = 20) {
   const result = new Array(volumes.length).fill(null);
   for (let i = period - 1; i < volumes.length; i++) {
@@ -618,37 +630,50 @@ function generateMarkers5m(candles) {
     const r     = rsiV[i]
     const va    = volAvgV[i]
 
-    // ── Filtro de régimen: solo operar en dirección de la tendencia de 16h ──
-    // En downtrend (precio < EMA 200) → solo cortos. En uptrend → solo largos.
+    // ── Filtro de régimen — excepción para rebotes con RSI extremo ──────────
+    // Tendencia normal: solo operar en dirección del EMA200.
+    // Rebote: si el RSI está muy extremo (<28 oversold / >72 overbought),
+    // se permite la señal contra-tendencia como scalp de rebote (flecha naranja).
+    let isBounce = false
     if (e200 !== null) {
-      if (freshBull && close < e200) continue
-      if (freshBear && close > e200) continue
+      if (freshBull && close < e200) {
+        if (r === null || r >= 28) continue   // downtrend: solo rebotes RSI muy oversold
+        isBounce = true
+      } else if (freshBear && close > e200) {
+        if (r === null || r <= 72) continue   // uptrend: solo rebotes RSI muy overbought
+        isBounce = true
+      }
     }
 
-    // Filtro adicional: EMA 20 y EMA 50 no deben ir ambas en contra
-    if (freshBull && e20 !== null && e50 !== null && close < e20 && close < e50) continue
-    if (freshBear && e20 !== null && e50 !== null && close > e20 && close > e50) continue
+    // Filtros de tendencia: no aplican a rebotes (en rebote las EMAs siempre están en contra)
+    if (!isBounce) {
+      if (freshBull && e20 !== null && e50 !== null && close < e20 && close < e50) continue
+      if (freshBear && e20 !== null && e50 !== null && close > e20 && close > e50) continue
+      if (r !== null && freshBull && r >= 70) continue
+      if (r !== null && freshBear && r <= 30) continue
+    }
 
-    // RSI: no entrar si ya está en zona extrema
-    if (r !== null && freshBull && r >= 70) continue
-    if (r !== null && freshBear && r <= 30) continue
-
-    // Magnitud: 1 base + hasta 4 confirmaciones
-    let strength = 1
+    // Magnitud: rebote parte en 2 (RSI extremo ya confirmado), tendencia en 1
+    let strength = isBounce ? 2 : 1
 
     if (r !== null) {
-      if (freshBull && r <= 55) strength++   // RSI con recorrido alcista
-      if (freshBear && r >= 45) strength++   // RSI con recorrido bajista
+      if (!isBounce) {
+        if (freshBull && r <= 55) strength++   // RSI con recorrido alcista
+        if (freshBear && r >= 45) strength++   // RSI con recorrido bajista
+      } else {
+        if (freshBull && r < 20) strength++    // RSI ultra-oversold: rebote más probable
+        if (freshBear && r > 80) strength++    // RSI ultra-overbought
+      }
     }
-    if (e20 !== null) {
-      if (freshBull && close > e20) strength++   // precio sobre EMA 20
+    if (!isBounce && e20 !== null) {
+      if (freshBull && close > e20) strength++
       if (freshBear && close < e20) strength++
     }
-    if (e50 !== null) {
-      if (freshBull && close > e50) strength++   // tendencia 4h a favor
+    if (!isBounce && e50 !== null) {
+      if (freshBull && close > e50) strength++
       if (freshBear && close < e50) strength++
     }
-    if (va !== null && volumes[i] > va * 1.3) strength++  // volumen confirma
+    if (va !== null && volumes[i] > va * 1.3) strength++
 
     strength = Math.min(5, strength)
     if (strength < 3) { lastIdx = i; continue }
@@ -656,10 +681,11 @@ function generateMarkers5m(candles) {
     markers.push({
       time:     times[i],
       position: freshBull ? 'belowBar' : 'aboveBar',
-      color:    '#FFD700',
+      color:    isBounce ? '#FF8C00' : '#FFD700',  // naranja = rebote, dorado = tendencia
       shape:    freshBull ? 'arrowUp' : 'arrowDown',
       size:     1,
       text:     String(strength),
+      bounce:   isBounce,
     })
     lastIdx = i
   }
@@ -886,10 +912,13 @@ export function getActiveSignal(candles, markers, interval) {
 
     if (magnitude < 3) return null  // magnitud 1-2 son ruido (confirmado por backtest)
 
-    const isLong  = m.position === 'belowBar'
-    const overall = magnitude >= 4
-      ? (isLong ? 'COMPRA_FUERTE' : 'VENTA_FUERTE')
-      : (isLong ? 'COMPRA'        : 'VENTA')
+    const isLong   = m.position === 'belowBar'
+    const isBounce = m.bounce === true
+    const overall  = isBounce
+      ? (isLong ? 'REBOTE_LARGO' : 'REBOTE_CORTO')
+      : (magnitude >= 4
+          ? (isLong ? 'COMPRA_FUERTE' : 'VENTA_FUERTE')
+          : (isLong ? 'COMPRA'        : 'VENTA'))
 
     // ATR en la vela del marcador para TP/SL
     const highs      = candles.map(c => c.high)
@@ -899,7 +928,8 @@ export function getActiveSignal(candles, markers, interval) {
     const markerIdx  = candles.findIndex(c => c.time === m.time)
     const markerAtr  = markerIdx >= 0 ? atrV[markerIdx] : null
 
-    return { overall, magnitude, isLong, direction: isLong ? 'LONG' : 'SHORT', atr: markerAtr, markerTime: m.time }
+    return { overall, magnitude, isLong, isBounce,
+             direction: isLong ? 'LONG' : 'SHORT', atr: markerAtr, markerTime: m.time }
   }
   return null
 }

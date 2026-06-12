@@ -71,14 +71,36 @@ function PositionCard({ pos, onClose }) {
         ))}
       </div>
 
-      {/* Barra de progreso */}
-      <div style={{ background: '#0d0f1a', borderRadius: 4, height: 5, marginBottom: 10, overflow: 'hidden' }}>
+      {/* Barra de progreso hacia TP/SL */}
+      <div style={{ background: '#0d0f1a', borderRadius: 4, height: 5, marginBottom: 6, overflow: 'hidden' }}>
         <div style={{
           width: `${progress}%`, height: '100%',
           background: progressColor, borderRadius: 4,
           transition: 'width 0.5s ease',
         }} />
       </div>
+
+      {/* Barra de tiempo máximo del trade */}
+      {pnl?.timeout && (
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+            <span style={{ color: '#4a5568', fontSize: '0.6rem', fontWeight: 600 }}>TIEMPO MÁXIMO</span>
+            <span style={{
+              color: pnl.timeout.pct > 80 ? '#ef5350' : '#4a5568',
+              fontSize: '0.6rem', fontWeight: 600,
+            }}>
+              {pnl.timeout.label} restantes
+            </span>
+          </div>
+          <div style={{ background: '#0d0f1a', borderRadius: 4, height: 3, overflow: 'hidden' }}>
+            <div style={{
+              width: `${pnl.timeout.pct}%`, height: '100%',
+              background: pnl.timeout.pct > 80 ? '#ef5350' : '#4a5568',
+              borderRadius: 4, transition: 'width 0.5s ease',
+            }} />
+          </div>
+        </div>
+      )}
 
       {/* P&L en vivo */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -147,7 +169,7 @@ function TradeRow({ t }) {
         color, fontWeight: 700, textAlign: 'center',
         background: color + '22', borderRadius: 4, padding: '1px 4px',
       }}>
-        {t.outcome === 'MANUAL' ? 'CX' : t.outcome === 'WIN' ? 'WIN' : 'LOSS'}
+        {t.outcome === 'WIN' ? 'WIN' : t.outcome === 'LOSS' ? 'LOSS' : t.outcome === 'TIMEOUT' ? 'TO' : 'CX'}
       </div>
     </div>
   )

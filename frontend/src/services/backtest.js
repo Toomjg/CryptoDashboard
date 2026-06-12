@@ -1,4 +1,4 @@
-import { atr, generateMarkers } from './indicators'
+import { atr, generateMarkers, RR_CONFIG, BOUNCE_RR } from './indicators'
 
 // Ejecuta backtest sobre las velas históricas usando las mismas señales
 // que genera generateMarkers. Para cada señal mira las velas siguientes
@@ -33,9 +33,12 @@ export function runBacktest(candles, interval, strategy = 'ema') {
     const curAtr = atrV[i]
     if (!curAtr || curAtr <= 0) continue
 
-    // R/R 2:1 → rentable a partir de 34% win rate
-    const tp = isBuy ? entry + curAtr * 2.0 : entry - curAtr * 2.0
-    const sl = isBuy ? entry - curAtr * 1.0 : entry + curAtr * 1.0
+    // R/R dinámico: rebotes usan targets chicos, tendencia usa R/R por temporalidad
+    const { tp: tpMult, sl: slMult } = marker.bounce
+      ? BOUNCE_RR
+      : (RR_CONFIG[interval] || { tp: 2.0, sl: 1.0 })
+    const tp = isBuy ? entry + curAtr * tpMult : entry - curAtr * tpMult
+    const sl = isBuy ? entry - curAtr * slMult : entry + curAtr * slMult
 
     let outcome    = 'TIMEOUT'
     let exitPrice  = candles[Math.min(i + maxHold, candles.length - 1)].close
@@ -60,6 +63,8 @@ export function runBacktest(candles, interval, strategy = 'ema') {
       time:      marker.time,
       direction: isBuy ? 'LONG' : 'SHORT',
       strength:  marker.text,
+      isBounce:  marker.bounce === true,
+      tpMult, slMult,
       entry, tp, sl, outcome, exitPrice,
       pct:       +pct.toFixed(2),
       exitCandle,
@@ -78,11 +83,11 @@ export function runBacktest(candles, interval, strategy = 'ema') {
   const avgWinPct   = wins.length   ? +(totalGain / wins.length).toFixed(2)   : 0
   const avgLossPct  = losses.length ? +(totalLoss / losses.length).toFixed(2) : 0
 
-  // Curva de capital normalizada (1% riesgo por operación, R/R 2:1)
+  // Curva de capital normalizada en unidades R (1R por pérdida, R/R variable)
   let equity = 0
   const equityCurve = trades.map(t => {
-    if (t.outcome === 'WIN')  equity += 2.0
-    if (t.outcome === 'LOSS') equity -= 1.0
+    if (t.outcome === 'WIN')  equity += t.tpMult ?? 2.0
+    if (t.outcome === 'LOSS') equity -= t.slMult ?? 1.0
     return +equity.toFixed(2)
   })
 

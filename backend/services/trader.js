@@ -1,3 +1,23 @@
+// Duración en ms de cada vela por temporalidad
+const INTERVAL_MS = {
+  '5m':  5  * 60 * 1000,
+  '15m': 15 * 60 * 1000,
+  '1h':  60 * 60 * 1000,
+  '4h':  4  * 60 * 60 * 1000,
+  '1d':  24 * 60 * 60 * 1000,
+  '1w':  7  * 24 * 60 * 60 * 1000,
+}
+// Máximo de velas a esperar antes de cerrar por timeout (igual que el backtest)
+const MAX_HOLD_CANDLES = {
+  '5m': 24, '15m': 24, '1h': 15, '4h': 15, '1d': 10, '1w': 8,
+}
+
+function getMaxHoldMs(interval) {
+  const ms = INTERVAL_MS[interval] || INTERVAL_MS['15m']
+  const n  = MAX_HOLD_CANDLES[interval] || 15
+  return ms * n
+}
+
 // Estado en memoria — persiste mientras Railway no reinicie el servicio
 const state = {
   enabled:    false,
@@ -21,10 +41,22 @@ function getState() {
     const pnlPct = isLong
       ? (pos._lastPrice - pos.entry) / pos.entry
       : (pos.entry - pos._lastPrice) / pos.entry
+
+    const maxHoldMs  = getMaxHoldMs(pos.interval)
+    const elapsed    = Date.now() - pos.openTime
+    const remaining  = Math.max(0, maxHoldMs - elapsed)
+    const timeoutPct = Math.min(100, Math.round(elapsed / maxHoldMs * 100))
+    const rH = Math.floor(remaining / 3600000)
+    const rM = Math.floor((remaining % 3600000) / 60000)
+
     livePnl = {
-      pct:  +(pnlPct * 100).toFixed(2),
-      usd:  +(pos.size * pnlPct).toFixed(2),
+      pct:   +(pnlPct * 100).toFixed(2),
+      usd:   +(pos.size * pnlPct).toFixed(2),
       price: pos._lastPrice,
+      timeout: {
+        pct:   timeoutPct,
+        label: rH > 0 ? `${rH}h ${rM}m` : `${rM}m`,
+      },
     }
   }
 
@@ -116,12 +148,18 @@ function updatePrice(symbol, currentPrice) {
 
   state.position._lastPrice = currentPrice
 
-  const { direction, tp, sl, entry, size } = state.position
+  const { direction, tp, sl, entry, size, interval: posInterval, openTime } = state.position
   const isLong = direction === 'LONG'
+
+  // Timeout: si el trade superó el equivalente a maxHold velas, cerrar a precio de mercado
+  const elapsed    = Date.now() - openTime
+  const maxHoldMs  = getMaxHoldMs(posInterval)
 
   let closed = false, outcome = null, exitPrice = currentPrice
 
-  if (isLong) {
+  if (elapsed > maxHoldMs) {
+    closed = true; outcome = 'TIMEOUT'; exitPrice = currentPrice
+  } else if (isLong) {
     if (currentPrice >= tp) { closed = true; outcome = 'WIN';  exitPrice = tp }
     if (currentPrice <= sl) { closed = true; outcome = 'LOSS'; exitPrice = sl }
   } else {

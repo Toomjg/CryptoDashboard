@@ -5,6 +5,7 @@ import {
   generateSignal, scoreToOverall,
   generateMarkers, getActiveSignal,
   toSeries, toHistogramSeries,
+  RR_CONFIG,
 } from '../services/indicators'
 
 const HIGHER_TF = { '5m': '15m', '15m': '1h', '1h': '4h', '4h': '1d' }
@@ -25,6 +26,7 @@ async function fetchNews(symbol) {
 // Dispara cuando hay un marcador fresco de magnitud ≥4 confirmado en la TF superior.
 async function maybeAlert(symbol, interval, activeSignal, candles) {
   if (!activeSignal || activeSignal.magnitude < 4) return   // solo mag 4+
+  if (activeSignal.isBounce) return                         // rebotes no se alertan (especulativos)
 
   const key       = `alert_${symbol}_${interval}`
   const lastAlert = localStorage.getItem(key)
@@ -44,12 +46,13 @@ async function maybeAlert(symbol, interval, activeSignal, candles) {
 
     localStorage.setItem(key, String(Date.now()))
 
-    // TP/SL centrados en precio actual usando ATR del marcador
-    const entry = candles[candles.length - 2].close  // última vela cerrada
+    // TP/SL con R/R dinámico según temporalidad
+    const entry  = candles[candles.length - 2].close
     const sigAtr = activeSignal.atr
     const isLong = activeSignal.isLong
-    const tp = sigAtr ? +(entry + (isLong ? 1 : -1) * sigAtr * 2).toFixed(2) : null
-    const sl = sigAtr ? +(entry + (isLong ? -1 : 1) * sigAtr * 1).toFixed(2) : null
+    const rr     = RR_CONFIG[interval] || { tp: 2.0, sl: 1.0 }
+    const tp = sigAtr ? +(entry + (isLong ? 1 : -1) * sigAtr * rr.tp).toFixed(2) : null
+    const sl = sigAtr ? +(entry + (isLong ? -1 : 1) * sigAtr * rr.sl).toFixed(2) : null
 
     await fetch('/api/market/alert', {
       method:  'POST',
@@ -59,7 +62,7 @@ async function maybeAlert(symbol, interval, activeSignal, candles) {
         overall:      activeSignal.overall,
         score:        activeSignal.magnitude,
         strength:     String(activeSignal.magnitude),
-        entry, tp, sl, rr: 2.0, fromAtr: true,
+        entry, tp, sl, rr: rr.tp, fromAtr: true,
         higherTf,
         higherOverall: higherSignal.overall,
       }),
@@ -101,11 +104,12 @@ function buildData(candles, ticker, newsData, interval) {
           overall:   activeSignal.overall,
           magnitude: activeSignal.magnitude,
           direction: activeSignal.direction,
+          isBounce:  activeSignal.isBounce ?? false,
           target: activeSignal.atr
             ? { direction: activeSignal.direction, atr: activeSignal.atr }
             : null,
         }
-      : { overall: 'NEUTRAL', magnitude: 0, target: null }),
+      : { overall: 'NEUTRAL', magnitude: 0, target: null, isBounce: false }),
     score:    compositeSignal.score,
     maxScore: compositeSignal.maxScore,
     details:  compositeSignal.details,

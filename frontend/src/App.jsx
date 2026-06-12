@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { RR_CONFIG, BOUNCE_RR } from './services/indicators'
 import { useMarketData } from './hooks/useMarketData'
 import CandleChart from './components/CandleChart'
 import RsiChart from './components/RsiChart'
@@ -23,6 +24,8 @@ const DIRECTION_CFG = {
   COMPRA_FUERTE: { color: '#26a69a', label: '▲ COMPRA FUERTE'},
   VENTA:         { color: '#ef5350', label: '▼ VENTA'        },
   VENTA_FUERTE:  { color: '#b71c1c', label: '▼ VENTA FUERTE' },
+  REBOTE_LARGO:  { color: '#FF8C00', label: '↑ REBOTE'       },
+  REBOTE_CORTO:  { color: '#FF8C00', label: '↓ REBOTE'       },
   NEUTRAL:       { color: '#9e9e9e', label: 'NEUTRAL'        },
 }
 
@@ -97,21 +100,24 @@ export default function App() {
     const sig = data?.signal
     if (!sig?.target || sig.overall === 'NEUTRAL') return null
     const { direction, atr: sigAtr } = sig.target
+    const isBounce = data?.activeSignal?.isBounce === true
+    const rr = isBounce ? BOUNCE_RR : (RR_CONFIG[interval] || { tp: 2.0, sl: 1.0 })
     const entry = livePrice?.price ?? data.candles[data.candles.length - 1].close
     const isLong = direction === 'LONG'
     if (sigAtr && sigAtr > 0) {
       return {
         entry,
-        tp: isLong ? +(entry + sigAtr * 2.0).toFixed(2) : +(entry - sigAtr * 2.0).toFixed(2),
-        sl: isLong ? +(entry - sigAtr * 1.0).toFixed(2) : +(entry + sigAtr * 1.0).toFixed(2),
-        direction,
+        tp: isLong ? +(entry + sigAtr * rr.tp).toFixed(2) : +(entry - sigAtr * rr.tp).toFixed(2),
+        sl: isLong ? +(entry - sigAtr * rr.sl).toFixed(2) : +(entry + sigAtr * rr.sl).toFixed(2),
+        direction, isBounce,
+        rrLabel: `TP ${rr.tp}×ATR · SL ${rr.sl}×ATR`,
       }
     }
     // Fallback: S/R absolutos — solo mostrar si el precio sigue dentro del rango válido
     const { tp, sl } = sig.target
     const valid = isLong ? (entry > sl && entry < tp) : (entry < sl && entry > tp)
     if (!valid) return null
-    return { entry, tp, sl, direction }
+    return { entry, tp, sl, direction, isBounce }
   })()
 
   return (
