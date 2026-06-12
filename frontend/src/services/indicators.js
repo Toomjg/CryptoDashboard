@@ -588,10 +588,11 @@ function generateMarkers5m(candles) {
   const volumes = candles.map(c => c.volume)
   const times   = candles.map(c => c.time)
 
-  const ema9v   = ema(closes,  9)   // ~45 min
-  const ema21v  = ema(closes, 21)   // ~105 min
-  const ema20v  = ema(closes, 20)   // filtro de tendencia (~100 min)
-  const ema50v  = ema(closes, 50)   // tendencia de corto plazo (~250 min / 4h)
+  const ema9v   = ema(closes,   9)   // ~45 min
+  const ema21v  = ema(closes,  21)   // ~105 min
+  const ema20v  = ema(closes,  20)   // filtro corto (~100 min)
+  const ema50v  = ema(closes,  50)   // tendencia ~4h
+  const ema200v = ema(closes, 200)   // regime filter: ~16h de tendencia
   const rsiV    = rsi(closes, 14)
   const volAvgV = volumeAvg(volumes, 20)
 
@@ -613,10 +614,18 @@ function generateMarkers5m(candles) {
     const close = closes[i]
     const e20   = ema20v[i]
     const e50   = ema50v[i]
+    const e200  = ema200v[i]
     const r     = rsiV[i]
     const va    = volAvgV[i]
 
-    // Filtro duro: descartar si EMA 20 y EMA 50 van en contra
+    // ── Filtro de régimen: solo operar en dirección de la tendencia de 16h ──
+    // En downtrend (precio < EMA 200) → solo cortos. En uptrend → solo largos.
+    if (e200 !== null) {
+      if (freshBull && close < e200) continue
+      if (freshBear && close > e200) continue
+    }
+
+    // Filtro adicional: EMA 20 y EMA 50 no deben ir ambas en contra
     if (freshBull && e20 !== null && e50 !== null && close < e20 && close < e50) continue
     if (freshBear && e20 !== null && e50 !== null && close > e20 && close > e50) continue
 
@@ -669,6 +678,7 @@ function generateMarkers5mUTBot(candles, keyValue = 1, atrPeriod = 10) {
   const times   = candles.map(c => c.time)
 
   const atrV    = atr(highs, lows, closes, atrPeriod)
+  const ema200v = ema(closes, 200)   // regime filter: ~16h
   const rsiV    = rsi(closes, 14)
   const volAvgV = volumeAvg(volumes, 20)
 
@@ -703,8 +713,15 @@ function generateMarkers5mUTBot(candles, keyValue = 1, atrPeriod = 10) {
     const bearCross = cp >= tsp && c < ts
     if (!bullCross && !bearCross) continue
 
-    const r  = rsiV[i]
-    const va = volAvgV[i]
+    const e200 = ema200v[i]
+    const r    = rsiV[i]
+    const va   = volAvgV[i]
+
+    // Filtro de régimen: solo operar en dirección de la tendencia de 16h
+    if (e200 !== null) {
+      if (bullCross && c < e200) continue
+      if (bearCross && c > e200) continue
+    }
 
     // Filtro RSI: no entrar en zona extrema
     if (r !== null && bullCross && r >= 72) continue
