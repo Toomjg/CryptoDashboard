@@ -29,6 +29,12 @@ router.post('/alert', async (req, res) => {
     ])
     const tg  = telegramResult.status === 'fulfilled' ? telegramResult.value : { ok: false }
     const bot = botResult.status     === 'fulfilled' ? botResult.value     : { triggered: false }
+    const { symbol, interval, strength, overall } = req.body
+    if (bot.triggered) {
+      console.log(`[BOT] SEÑAL ACEPTADA ${symbol} ${interval} mag=${strength} (${overall})`)
+    } else {
+      console.log(`[BOT] SEÑAL RECHAZADA ${symbol} ${interval} mag=${strength} — ${bot.reason || 'sin razón'}`)
+    }
     res.json({ ...tg, bot })
   } catch (err) {
     console.error('Alert error:', err.message);

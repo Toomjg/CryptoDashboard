@@ -20,7 +20,7 @@ function getMaxHoldMs(interval) {
 
 // Estado en memoria — persiste mientras Railway no reinicie el servicio
 const state = {
-  enabled:    false,
+  enabled:    true,
   paperMode:  true,          // true = simulado, false = real (Binance API)
   capital:    100,           // USD disponible
   startCapital: 100,

@@ -44,8 +44,6 @@ async function maybeAlert(symbol, interval, activeSignal, candles) {
     // La TF superior debe confirmar la misma dirección (cualquier magnitud)
     if (!higherSignal || higherSignal.isLong !== activeSignal.isLong) return
 
-    localStorage.setItem(key, String(Date.now()))
-
     // TP/SL con R/R dinámico según temporalidad
     const entry  = candles[candles.length - 2].close
     const sigAtr = activeSignal.atr
@@ -54,7 +52,7 @@ async function maybeAlert(symbol, interval, activeSignal, candles) {
     const tp = sigAtr ? +(entry + (isLong ? 1 : -1) * sigAtr * rr.tp).toFixed(2) : null
     const sl = sigAtr ? +(entry + (isLong ? -1 : 1) * sigAtr * rr.sl).toFixed(2) : null
 
-    await fetch('/api/market/alert', {
+    const res    = await fetch('/api/market/alert', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -67,6 +65,13 @@ async function maybeAlert(symbol, interval, activeSignal, candles) {
         higherOverall: higherSignal.overall,
       }),
     })
+    const result = await res.json().catch(() => ({}))
+
+    // Solo debouncea si algo funcionó — evita bloquear 4h cuando el bot estaba
+    // mal configurado o desactivado al momento de la señal
+    if (result.ok || result.bot?.triggered) {
+      localStorage.setItem(key, String(Date.now()))
+    }
   } catch {
     // Error al enviar alerta — no bloquear la UI
   }
