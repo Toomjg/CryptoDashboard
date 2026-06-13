@@ -94,11 +94,11 @@ export function runBacktest(candles, interval, strategy = 'ema') {
   const avgWinPct    = wins.length   ? +(totalGain / wins.length).toFixed(2)   : 0
   const avgLossPct   = losses.length ? +(totalLoss / losses.length).toFixed(2) : 0
 
-  // Curva de capital en unidades R (SL = 1R, TP = 2R, BE = 0.2R)
+  // Curva de capital en unidades R (SL = 1R, TP = tp/sl R, BE = beSl/sl R)
   let equity = 0
   const equityCurve = trades.map(t => {
-    if (t.outcome === 'WIN')  equity += TP_PCT / SL_PCT        // 2.0R
-    if (t.outcome === 'BE')   equity += BE_SL  / SL_PCT        // 0.2R
+    if (t.outcome === 'WIN')  equity += risk.tp  / risk.sl
+    if (t.outcome === 'BE')   equity += risk.beSl / risk.sl
     if (t.outcome === 'LOSS') equity -= 1.0
     return +equity.toFixed(2)
   })
