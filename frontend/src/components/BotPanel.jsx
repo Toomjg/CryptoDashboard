@@ -20,8 +20,10 @@ function PositionCard({ pos, onClose }) {
   const isLong  = pos.direction === 'LONG'
   const pnl     = pos.livePnl
   const pnlColor = pnl ? (pnl.usd >= 0 ? '#26a69a' : '#ef5350') : '#718096'
-  const tpPct   = ((Math.abs(pos.tp - pos.entry) / pos.entry) * 100).toFixed(2)
-  const slPct   = ((Math.abs(pos.sl - pos.entry) / pos.entry) * 100).toFixed(2)
+  const tpPct    = ((Math.abs(pos.tp - pos.entry) / pos.entry) * 100).toFixed(2)
+  const slRaw    = ((pos.sl - pos.entry) / pos.entry * 100)
+  const slPct    = Math.abs(slRaw).toFixed(2)
+  const slAbove  = slRaw > 0  // true cuando el SL está por encima de entrada (break-even activo)
 
   // Progreso hacia TP/SL
   let progress = 0
@@ -54,7 +56,14 @@ function PositionCard({ pos, onClose }) {
             </span>
           )}
         </div>
-        <span style={{ color: '#4a5568', fontSize: '0.72rem' }}>{timeSince(pos.openTime)} atrás</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {pos.breakEvenTriggered && (
+            <span style={{ background: '#26a69a22', color: '#26a69a', border: '1px solid #26a69a', borderRadius: 4, padding: '1px 6px', fontSize: '0.65rem', fontWeight: 700 }}>
+              BE ✓
+            </span>
+          )}
+          <span style={{ color: '#4a5568', fontSize: '0.72rem' }}>{timeSince(pos.openTime)} atrás</span>
+        </div>
       </div>
 
       {/* Precios */}
@@ -62,7 +71,7 @@ function PositionCard({ pos, onClose }) {
         {[
           { label: 'ENTRADA', value: pos.entry,    color: '#e2e8f0' },
           { label: `TP (+${tpPct}%)`, value: pos.tp, color: '#26a69a' },
-          { label: `SL (-${slPct}%)`, value: pos.sl, color: '#ef5350' },
+          { label: `SL (${slAbove ? '+' : '-'}${slPct}%)`, value: pos.sl, color: slAbove ? '#26a69a' : '#ef5350' },
         ].map(({ label, value, color }) => (
           <div key={label} style={{ background: '#0d0f1a', borderRadius: 6, padding: '6px 8px', textAlign: 'center' }}>
             <div style={{ color: '#4a5568', fontSize: '0.6rem', fontWeight: 600, marginBottom: 2 }}>{label}</div>
@@ -134,7 +143,7 @@ function PositionCard({ pos, onClose }) {
 
 // ─── Fila de trade en historial ───────────────────────────────────────────────
 function TradeRow({ t }) {
-  const isWin  = t.outcome === 'WIN'
+  const isWin  = t.outcome === 'WIN' || t.outcome === 'BE'
   const isLoss = t.outcome === 'LOSS'
   const color  = isWin ? '#26a69a' : isLoss ? '#ef5350' : '#718096'
 
@@ -169,7 +178,7 @@ function TradeRow({ t }) {
         color, fontWeight: 700, textAlign: 'center',
         background: color + '22', borderRadius: 4, padding: '1px 4px',
       }}>
-        {t.outcome === 'WIN' ? 'WIN' : t.outcome === 'LOSS' ? 'LOSS' : t.outcome === 'TIMEOUT' ? 'TO' : 'CX'}
+        {t.outcome === 'WIN' ? 'WIN' : t.outcome === 'BE' ? 'BE' : t.outcome === 'LOSS' ? 'LOSS' : t.outcome === 'TIMEOUT' ? 'TO' : 'CX'}
       </div>
     </div>
   )

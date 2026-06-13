@@ -1,3 +1,9 @@
+// ─── Parámetros de riesgo fijos ─────────────────────────────────────────────
+const SL_PCT     = 0.10  // Stop loss: 10% desde la entrada
+const TP_PCT     = 0.20  // Take profit: 20% desde la entrada
+const BE_TRIGGER = 0.10  // Activar break-even al +10% de ganancia
+const BE_SL      = 0.02  // SL se mueve a +2% al activarse break-even
+
 // Duración en ms de cada vela por temporalidad
 const INTERVAL_MS = {
   '5m':  5  * 60 * 1000,
@@ -61,7 +67,7 @@ function getState() {
   }
 
   const closedTrades = state.trades
-  const wins   = closedTrades.filter(t => t.outcome === 'WIN')
+  const wins   = closedTrades.filter(t => t.outcome === 'WIN' || t.outcome === 'BE')
   const losses = closedTrades.filter(t => t.outcome === 'LOSS')
   const totalPnl = closedTrades.reduce((s, t) => s + t.pnlUSD, 0)
 
@@ -102,23 +108,27 @@ function configure({ enabled, paperMode, capital, riskPct, interval, minStrength
 
 // ─── Lógica de entrada ──────────────────────────────────────────────────────
 
-function processSignal({ symbol, interval, overall, score, entry, tp, sl, rr, strength }) {
+function processSignal({ symbol, interval, overall, score, entry, strength }) {
   if (!state.enabled)                    return { triggered: false, reason: 'Bot desactivado' }
   if (interval !== state.interval)       return { triggered: false, reason: `Bot opera solo en ${state.interval}` }
   if (state.position)                    return { triggered: false, reason: 'Ya hay una posición abierta' }
-  if (!tp || !sl)                        return { triggered: false, reason: 'Sin TP/SL definidos' }
 
   const numStrength = parseInt(strength || '0', 10)
   if (numStrength < state.minStrength)   return { triggered: false, reason: `Magnitud ${numStrength} < mínimo ${state.minStrength}` }
 
   const isLong = overall.includes('COMPRA')
-  const slDist = isLong ? entry - sl : sl - entry
-  const slPct  = slDist / entry
-  if (slPct <= 0)                        return { triggered: false, reason: 'SL inválido' }
 
-  // Tamaño de posición: arriesgar riskPct% del capital
-  const riskUSD     = state.capital * state.riskPct / 100
-  const positionSize = Math.min(+(riskUSD / slPct).toFixed(2), state.capital)
+  // SL y TP fijos en % desde el precio de entrada
+  const tp = isLong
+    ? +(entry * (1 + TP_PCT)).toFixed(2)
+    : +(entry * (1 - TP_PCT)).toFixed(2)
+  const sl = isLong
+    ? +(entry * (1 - SL_PCT)).toFixed(2)
+    : +(entry * (1 + SL_PCT)).toFixed(2)
+
+  // Tamaño de posición: arriesgar riskPct% del capital (SL fijo en 10%)
+  const riskUSD      = state.capital * state.riskPct / 100
+  const positionSize = Math.min(+(riskUSD / SL_PCT).toFixed(2), state.capital)
 
   const position = {
     id:        Date.now(),
@@ -126,17 +136,17 @@ function processSignal({ symbol, interval, overall, score, entry, tp, sl, rr, st
     direction: isLong ? 'LONG' : 'SHORT',
     strength:  numStrength,
     entry:     +entry,
-    tp:        +tp,
-    sl:        +sl,
-    rr:        rr ?? null,
+    tp, sl,
+    rr:        TP_PCT / SL_PCT,  // siempre 2.0
     size:      positionSize,
     openTime:  Date.now(),
     paperMode: state.paperMode,
     _lastPrice: entry,
+    breakEvenTriggered: false,
   }
 
   state.position = position
-  console.log(`[BOT] ${state.paperMode ? 'PAPER' : 'REAL'} ${position.direction} ${symbol} @ ${entry} | TP ${tp} | SL ${sl} | Size $${positionSize}`)
+  console.log(`[BOT] ${state.paperMode ? 'PAPER' : 'REAL'} ${position.direction} ${symbol} @ ${entry} | TP ${tp} (+${TP_PCT*100}%) | SL ${sl} (-${SL_PCT*100}%) | Size $${positionSize}`)
 
   return { triggered: true, position: { ...position, _lastPrice: undefined }, paperMode: state.paperMode }
 }
@@ -148,12 +158,30 @@ function updatePrice(symbol, currentPrice) {
 
   state.position._lastPrice = currentPrice
 
-  const { direction, tp, sl, entry, size, interval: posInterval, openTime } = state.position
+  const pos = state.position
+  const { direction, tp, entry, size, interval: posInterval, openTime } = pos
   const isLong = direction === 'LONG'
 
+  // Break-even: cuando la ganancia supera BE_TRIGGER, mover SL a +BE_SL
+  if (!pos.breakEvenTriggered) {
+    const gainPct = isLong
+      ? (currentPrice - entry) / entry
+      : (entry - currentPrice) / entry
+    if (gainPct >= BE_TRIGGER) {
+      const newSl = isLong
+        ? +(entry * (1 + BE_SL)).toFixed(2)
+        : +(entry * (1 - BE_SL)).toFixed(2)
+      pos.sl = newSl
+      pos.breakEvenTriggered = true
+      console.log(`[BOT] BREAK-EVEN ${symbol} — SL movido a ${newSl} (+${BE_SL * 100}%)`)
+    }
+  }
+
+  const sl = pos.sl  // leer después del posible update de break-even
+
   // Timeout: si el trade superó el equivalente a maxHold velas, cerrar a precio de mercado
-  const elapsed    = Date.now() - openTime
-  const maxHoldMs  = getMaxHoldMs(posInterval)
+  const elapsed   = Date.now() - openTime
+  const maxHoldMs = getMaxHoldMs(posInterval)
 
   let closed = false, outcome = null, exitPrice = currentPrice
 
@@ -161,10 +189,10 @@ function updatePrice(symbol, currentPrice) {
     closed = true; outcome = 'TIMEOUT'; exitPrice = currentPrice
   } else if (isLong) {
     if (currentPrice >= tp) { closed = true; outcome = 'WIN';  exitPrice = tp }
-    if (currentPrice <= sl) { closed = true; outcome = 'LOSS'; exitPrice = sl }
+    if (currentPrice <= sl) { closed = true; outcome = pos.breakEvenTriggered ? 'BE' : 'LOSS'; exitPrice = sl }
   } else {
     if (currentPrice <= tp) { closed = true; outcome = 'WIN';  exitPrice = tp }
-    if (currentPrice >= sl) { closed = true; outcome = 'LOSS'; exitPrice = sl }
+    if (currentPrice >= sl) { closed = true; outcome = pos.breakEvenTriggered ? 'BE' : 'LOSS'; exitPrice = sl }
   }
 
   if (!closed) return null
