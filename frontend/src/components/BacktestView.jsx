@@ -80,7 +80,7 @@ function StrengthRow({ level, data }) {
     )
   }
 
-  const { total, wins, losses, timeouts, winRate, avgPct } = data
+  const { total, wins, bes: gBes, losses, timeouts, winRate, avgPct } = data
   const conf = confidence(total)
   const barColor = winRate >= 60 ? '#26a69a' : winRate >= 50 ? '#ff9800' : '#ef5350'
 
@@ -96,7 +96,9 @@ function StrengthRow({ level, data }) {
       {/* Barra win rate */}
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-          <span style={{ fontSize: '0.7rem', color: '#718096' }}>{total} señales · {wins}W / {losses}L {timeouts > 0 ? `/ ${timeouts}T` : ''}</span>
+          <span style={{ fontSize: '0.7rem', color: '#718096' }}>
+            {total} señales · {wins}W {gBes > 0 ? `/ ${gBes}BE` : ''} / {losses}L {timeouts > 0 ? `/ ${timeouts}T` : ''}
+          </span>
           <span style={{ fontSize: '0.72rem', fontWeight: 700, color: barColor }}>{winRate}%</span>
         </div>
         <div style={{ background: '#1e2130', borderRadius: 4, height: 7 }}>
@@ -179,7 +181,7 @@ export default function BacktestView({ interval, symbol }) {
     </div>
   )
 
-  const { trades, winRate, total, wins, losses, bes, timeouts, profitFactor, avgWinPct, avgLossPct, equityCurve, maxDrawdown, finalEquity, byStrength, byDirection } = result
+  const { trades, winRate, resolvedWinRate, resolvedTotal, total, wins, losses, bes, timeouts, profitFactor, avgWinPct, avgLossPct, equityCurve, maxDrawdown, finalEquity, byStrength, byDirection } = result
   const winColor = winRate >= 60 ? '#26a69a' : winRate >= 50 ? '#ff9800' : '#ef5350'
   const candleSpan = candles.length > 0
     ? `${fmtDate(candles[0].time)} → ${fmtDate(candles[candles.length - 1].time)}`
@@ -231,12 +233,14 @@ export default function BacktestView({ interval, symbol }) {
 
       {/* Stats generales */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '0.5rem', marginBottom: '0.75rem' }}>
-        <StatCard label="Win Rate"      value={`${winRate}%`}        color={winColor} />
-        <StatCard label="Total señales" value={total}                color="#e2e8f0" />
-        <StatCard label="Profit Factor" value={profitFactor ?? '—'}  color={profitFactor >= 1.2 ? '#26a69a' : profitFactor >= 1 ? '#ff9800' : '#ef5350'} sub="ganancia/pérdida" />
-        <StatCard label="Avg Win"       value={`+${avgWinPct}%`}     color="#26a69a" />
-        <StatCard label="Avg Loss"      value={`-${avgLossPct}%`}    color="#ef5350" />
-        <StatCard label="Max Drawdown"  value={`${maxDrawdown}%`}    color="#ff9800" sub="1% riesgo/op" />
+        <StatCard label="Win Rate"       value={`${winRate}%`}
+          sub={resolvedWinRate != null && timeouts > 0 ? `${resolvedWinRate}% sin timeouts` : null}
+          color={winColor} />
+        <StatCard label="Total señales"  value={total}                color="#e2e8f0" sub={timeouts > 0 ? `${timeouts} timeouts` : null} />
+        <StatCard label="Profit Factor"  value={profitFactor ?? '—'}  color={profitFactor >= 1.2 ? '#26a69a' : profitFactor >= 1 ? '#ff9800' : '#ef5350'} sub="ganancia/pérdida" />
+        <StatCard label="Avg Win"        value={`+${avgWinPct}%`}     color="#26a69a" />
+        <StatCard label="Avg Loss"       value={`-${avgLossPct}%`}    color="#ef5350" />
+        <StatCard label="Max Drawdown"   value={`${maxDrawdown}%`}    color="#ff9800" sub="1% riesgo/op" />
       </div>
 
       {/* Curva de capital */}

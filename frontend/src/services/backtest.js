@@ -10,9 +10,10 @@ const RISK_CONFIG = {
 }
 function getRisk(interval) { return RISK_CONFIG[interval] || RISK_CONFIG['1h'] }
 
-// Timeout escalado igual que el backend
+// El backtest usa todos los datos disponibles por señal — sin timeout arbitrario.
+// El bot en vivo tiene su propio timeout; acá queremos ver la verdad de la señal.
 const MAX_HOLD = {
-  '5m': 48, '15m': 96, '1h': 72, '4h': 30, '1d': 15, '1w': 10,
+  '5m': 8000, '15m': 3000, '1h': 3000, '4h': 2000, '1d': 1000, '1w': 500,
 }
 
 export function runBacktest(candles, interval, strategy = 'ema') {
@@ -82,11 +83,14 @@ export function runBacktest(candles, interval, strategy = 'ema') {
     })
   }
 
+  const pureWins = trades.filter(t => t.outcome === 'WIN')
   const wins     = trades.filter(t => t.outcome === 'WIN' || t.outcome === 'BE')
   const losses   = trades.filter(t => t.outcome === 'LOSS')
   const bes      = trades.filter(t => t.outcome === 'BE')
   const timeouts = trades.filter(t => t.outcome === 'TIMEOUT')
   const winRate  = trades.length ? +(wins.length / trades.length * 100).toFixed(1) : 0
+  const resolvedTotal   = wins.length + losses.length
+  const resolvedWinRate = resolvedTotal > 0 ? +(wins.length / resolvedTotal * 100).toFixed(1) : null
 
   const totalGain    = wins.reduce((s, t) => s + t.pct, 0)
   const totalLoss    = losses.reduce((s, t) => s + Math.abs(t.pct), 0)
@@ -121,26 +125,29 @@ export function runBacktest(candles, interval, strategy = 'ema') {
 
   const byStrength = {}
   for (let s = 1; s <= 5; s++) {
-    const group  = trades.filter(t => t.strength === String(s))
-    const gWins  = group.filter(t => t.outcome === 'WIN' || t.outcome === 'BE')
+    const group    = trades.filter(t => t.strength === String(s))
+    const gWinsAll = group.filter(t => t.outcome === 'WIN' || t.outcome === 'BE')
     byStrength[s] = {
       total:    group.length,
-      wins:     gWins.length,
+      wins:     group.filter(t => t.outcome === 'WIN').length,
+      bes:      group.filter(t => t.outcome === 'BE').length,
       losses:   group.filter(t => t.outcome === 'LOSS').length,
       timeouts: group.filter(t => t.outcome === 'TIMEOUT').length,
-      winRate:  group.length ? +(gWins.length / group.length * 100).toFixed(1) : null,
+      winRate:  group.length ? +(gWinsAll.length / group.length * 100).toFixed(1) : null,
       avgPct:   group.length ? +(group.reduce((s, t) => s + t.pct, 0) / group.length).toFixed(2) : null,
     }
   }
 
   return {
     trades,
-    total:        trades.length,
+    total:           trades.length,
     winRate,
-    wins:         wins.length,
-    losses:       losses.length,
-    bes:          bes.length,
-    timeouts:     timeouts.length,
+    resolvedWinRate,
+    resolvedTotal,
+    wins:            pureWins.length,
+    losses:          losses.length,
+    bes:             bes.length,
+    timeouts:        timeouts.length,
     profitFactor,
     avgWinPct,
     avgLossPct,
