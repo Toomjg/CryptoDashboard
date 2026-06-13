@@ -1,9 +1,19 @@
 import { generateMarkers } from './indicators'
 
-const SL_PCT     = 0.10
-const TP_PCT     = 0.20
-const BE_TRIGGER = 0.10
-const BE_SL      = 0.02
+const RISK_CONFIG = {
+  '5m':  { sl: 0.015, tp: 0.030, beTrigger: 0.015, beSl: 0.003 },
+  '15m': { sl: 0.025, tp: 0.050, beTrigger: 0.025, beSl: 0.005 },
+  '1h':  { sl: 0.040, tp: 0.080, beTrigger: 0.040, beSl: 0.008 },
+  '4h':  { sl: 0.070, tp: 0.140, beTrigger: 0.070, beSl: 0.014 },
+  '1d':  { sl: 0.100, tp: 0.200, beTrigger: 0.100, beSl: 0.020 },
+  '1w':  { sl: 0.150, tp: 0.300, beTrigger: 0.150, beSl: 0.030 },
+}
+function getRisk(interval) { return RISK_CONFIG[interval] || RISK_CONFIG['1h'] }
+
+// Timeout escalado igual que el backend
+const MAX_HOLD = {
+  '5m': 48, '15m': 96, '1h': 72, '4h': 30, '1d': 15, '1w': 10,
+}
 
 export function runBacktest(candles, interval, strategy = 'ema') {
   if (!candles || candles.length < 100) return null
@@ -14,8 +24,8 @@ export function runBacktest(candles, interval, strategy = 'ema') {
   const timeToIdx = {}
   candles.forEach((c, i) => { timeToIdx[c.time] = i })
 
-  const isShortTerm = interval === '5m' || interval === '15m' || interval === '1h'
-  const maxHold = isShortTerm ? 24 : 15
+  const risk    = getRisk(interval)
+  const maxHold = MAX_HOLD[interval] || 48
 
   const trades = []
 
@@ -26,9 +36,9 @@ export function runBacktest(candles, interval, strategy = 'ema') {
     const isBuy = marker.position === 'belowBar'
     const entry = candles[i].close
 
-    // SL y TP fijos en % — igual que el bot
-    const tp = isBuy ? +(entry * (1 + TP_PCT)).toFixed(8) : +(entry * (1 - TP_PCT)).toFixed(8)
-    const sl = isBuy ? +(entry * (1 - SL_PCT)).toFixed(8) : +(entry * (1 + SL_PCT)).toFixed(8)
+    // SL y TP según temporalidad — igual que el bot
+    const tp = isBuy ? +(entry * (1 + risk.tp)).toFixed(8) : +(entry * (1 - risk.tp)).toFixed(8)
+    const sl = isBuy ? +(entry * (1 - risk.sl)).toFixed(8) : +(entry * (1 + risk.sl)).toFixed(8)
 
     let outcome    = 'TIMEOUT'
     let exitPrice  = candles[Math.min(i + maxHold, candles.length - 1)].close
@@ -37,14 +47,14 @@ export function runBacktest(candles, interval, strategy = 'ema') {
     let currentSl   = sl
 
     for (let j = i + 1; j < candles.length && j <= i + maxHold; j++) {
-      // Break-even: si el precio supera BE_TRIGGER, mover SL a BE_SL
+      // Break-even: si el precio supera beTrigger, mover SL a beSl
       if (!beTriggered) {
-        if (isBuy  && candles[j].high >= entry * (1 + BE_TRIGGER)) {
+        if (isBuy  && candles[j].high >= entry * (1 + risk.beTrigger)) {
           beTriggered = true
-          currentSl   = +(entry * (1 + BE_SL)).toFixed(8)
-        } else if (!isBuy && candles[j].low <= entry * (1 - BE_TRIGGER)) {
+          currentSl   = +(entry * (1 + risk.beSl)).toFixed(8)
+        } else if (!isBuy && candles[j].low <= entry * (1 - risk.beTrigger)) {
           beTriggered = true
-          currentSl   = +(entry * (1 - BE_SL)).toFixed(8)
+          currentSl   = +(entry * (1 - risk.beSl)).toFixed(8)
         }
       }
 

@@ -195,7 +195,14 @@ export default function BacktestView({ interval, symbol }) {
             Backtest — {symbol.replace('USDT', '/USDT')} {interval}
           </span>
           <div style={{ fontSize: '0.68rem', color: '#4a5568', marginTop: 2 }}>
-            {candles?.length} velas · {candleSpan} · TP = +20% · SL = -10% · BE al +10%
+            {candles?.length} velas · {candleSpan} · {{
+            '5m': 'TP +3% · SL -1.5% · BE +1.5%',
+            '15m': 'TP +5% · SL -2.5% · BE +2.5%',
+            '1h':  'TP +8% · SL -4% · BE +4%',
+            '4h':  'TP +14% · SL -7% · BE +7%',
+            '1d':  'TP +20% · SL -10% · BE +10%',
+            '1w':  'TP +30% · SL -15% · BE +15%',
+          }[interval] || 'TP/SL por temporalidad'}
           </div>
         </div>
         {interval === '5m' && (
