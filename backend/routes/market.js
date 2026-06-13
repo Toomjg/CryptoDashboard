@@ -23,12 +23,13 @@ router.get('/news', async (req, res) => {
 // POST /api/market/alert  — frontend lo llama cuando detecta señal confirmada en 2 TF
 router.post('/alert', async (req, res) => {
   try {
-    const [telegramResult, botResult] = await Promise.allSettled([
-      sendSignalAlert(req.body),
-      Promise.resolve(trader.processSignal(req.body)),
-    ])
-    const tg  = telegramResult.status === 'fulfilled' ? telegramResult.value : { ok: false }
-    const bot = botResult.status     === 'fulfilled' ? botResult.value     : { triggered: false }
+    // Bot primero — para que Telegram use los TP/SL reales del bot (% fijos)
+    const bot = trader.processSignal(req.body)
+    const tgBody = bot.triggered && bot.position
+      ? { ...req.body, tp: bot.position.tp, sl: bot.position.sl, rr: bot.position.rr }
+      : req.body
+    const tg = await sendSignalAlert(tgBody).catch(() => ({ ok: false }))
+
     const { symbol, interval, strength, overall } = req.body
     if (bot.triggered) {
       console.log(`[BOT] SEÑAL ACEPTADA ${symbol} ${interval} mag=${strength} (${overall})`)

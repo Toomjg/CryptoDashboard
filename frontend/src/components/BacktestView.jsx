@@ -179,7 +179,7 @@ export default function BacktestView({ interval, symbol }) {
     </div>
   )
 
-  const { trades, winRate, total, wins, losses, timeouts, profitFactor, avgWinPct, avgLossPct, equityCurve, maxDrawdown, finalEquity, byStrength, byDirection } = result
+  const { trades, winRate, total, wins, losses, bes, timeouts, profitFactor, avgWinPct, avgLossPct, equityCurve, maxDrawdown, finalEquity, byStrength, byDirection } = result
   const winColor = winRate >= 60 ? '#26a69a' : winRate >= 50 ? '#ff9800' : '#ef5350'
   const candleSpan = candles.length > 0
     ? `${fmtDate(candles[0].time)} → ${fmtDate(candles[candles.length - 1].time)}`
@@ -195,7 +195,7 @@ export default function BacktestView({ interval, symbol }) {
             Backtest — {symbol.replace('USDT', '/USDT')} {interval}
           </span>
           <div style={{ fontSize: '0.68rem', color: '#4a5568', marginTop: 2 }}>
-            {candles?.length} velas · {candleSpan} · TP = 2×ATR · SL = 1×ATR
+            {candles?.length} velas · {candleSpan} · TP = +20% · SL = -10% · BE al +10%
           </div>
         </div>
         {interval === '5m' && (
@@ -243,8 +243,9 @@ export default function BacktestView({ interval, symbol }) {
         <EquityCurve curve={equityCurve} final={finalEquity} />
         <div style={{ display: 'flex', gap: '1.5rem', marginTop: 4 }}>
           <span style={{ fontSize: '0.65rem', color: '#26a69a' }}>■ {wins} wins</span>
+          <span style={{ fontSize: '0.65rem', color: '#4caf50' }}>■ {bes ?? 0} break-even</span>
           <span style={{ fontSize: '0.65rem', color: '#ef5350' }}>■ {losses} losses</span>
-          <span style={{ fontSize: '0.65rem', color: '#718096' }}>■ {timeouts} timeouts (sin TP ni SL en plazo)</span>
+          <span style={{ fontSize: '0.65rem', color: '#718096' }}>■ {timeouts} timeouts</span>
         </div>
       </div>
 
@@ -298,12 +299,12 @@ export default function BacktestView({ interval, symbol }) {
         </div>
         <div style={{ maxHeight: 300, overflowY: 'auto' }}>
           {[...trades].reverse().map((t, idx) => {
-            const color = t.outcome === 'WIN' ? '#26a69a' : t.outcome === 'LOSS' ? '#ef5350' : '#718096'
+            const color = t.outcome === 'WIN' ? '#26a69a' : t.outcome === 'BE' ? '#4caf50' : t.outcome === 'LOSS' ? '#ef5350' : '#718096'
             return (
               <div key={idx} style={{
                 display: 'grid', gridTemplateColumns: '130px 55px 35px 105px 90px 90px 75px 75px',
                 gap: '0.5rem', padding: '0.42rem 1rem', borderBottom: '1px solid #1e213035', alignItems: 'center',
-                background: t.outcome === 'WIN' ? '#26a69a08' : t.outcome === 'LOSS' ? '#ef535008' : 'transparent',
+                background: t.outcome === 'WIN' ? '#26a69a08' : t.outcome === 'BE' ? '#4caf5008' : t.outcome === 'LOSS' ? '#ef535008' : 'transparent',
               }}>
                 <span style={{ fontSize: '0.67rem', color: '#718096', fontFamily: 'monospace' }}>{fmtDate(t.time)}</span>
                 <span style={{ fontSize: '0.7rem', fontWeight: 700, color: t.direction === 'LONG' ? '#26a69a' : '#ef5350' }}>{t.direction}</span>
