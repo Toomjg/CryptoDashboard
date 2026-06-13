@@ -40,7 +40,7 @@ const state = {
   capital:    100,           // USD disponible
   startCapital: 100,
   riskPct:    5,             // % del capital a arriesgar por trade
-  interval:   '15m',        // temporalidad que activa el bot
+  interval:   '1h',         // temporalidad que activa el bot
   minStrength: 4,            // magnitud mínima para operar
   position:   null,          // posición abierta actual
   trades:     [],            // historial de trades cerrados
