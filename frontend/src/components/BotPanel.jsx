@@ -387,7 +387,7 @@ export default function BotPanel() {
               onChange={e => { setLocalCfg(c => ({ ...c, interval: e.target.value })); saveConfig({ interval: e.target.value }) }}
               style={inputStyle}
             >
-              {['15m','1h','4h','1d'].map(v => <option key={v} value={v}>{v}</option>)}
+              {['5m','15m','1h','4h','1d'].map(v => <option key={v} value={v}>{v}</option>)}
             </select>
           </label>
 

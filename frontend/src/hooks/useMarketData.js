@@ -10,7 +10,13 @@ import {
 
 const HIGHER_TF = { '5m': '15m', '15m': '1h', '1h': '4h', '4h': '1d' }
 const STRONG_SIGNALS = new Set(['COMPRA', 'COMPRA_FUERTE', 'VENTA', 'VENTA_FUERTE'])
-const ALERT_DEBOUNCE_MS = 4 * 60 * 60 * 1000 // 4 horas
+const ALERT_DEBOUNCE_MS = {
+  '5m':  45 * 60 * 1000,         // 45 min — scalp cierra rápido, permite re-entrada
+  '15m': 90 * 60 * 1000,
+  '1h':  2  * 60 * 60 * 1000,
+  '4h':  4  * 60 * 60 * 1000,
+  '1d':  8  * 60 * 60 * 1000,
+}
 
 async function fetchNews(symbol) {
   try {
@@ -25,12 +31,13 @@ async function fetchNews(symbol) {
 // Alerta basada en el sistema de marcadores — mismo criterio que flechas y cuadro TP/SL.
 // Dispara cuando hay un marcador fresco de magnitud ≥4 confirmado en la TF superior.
 async function maybeAlert(symbol, interval, activeSignal, candles) {
-  if (!activeSignal || activeSignal.magnitude < 4) return   // solo mag 4+
+  if (!activeSignal || activeSignal.magnitude < 3) return   // mag 3+ (bot puede filtrar por minStrength)
   if (activeSignal.isBounce) return                         // rebotes no se alertan (especulativos)
 
   const key       = `alert_${symbol}_${interval}`
   const lastAlert = localStorage.getItem(key)
-  if (lastAlert && Date.now() - parseInt(lastAlert) < ALERT_DEBOUNCE_MS) return
+  const debounce  = ALERT_DEBOUNCE_MS[interval] ?? ALERT_DEBOUNCE_MS['1h']
+  if (lastAlert && Date.now() - parseInt(lastAlert) < debounce) return
 
   const higherTf = HIGHER_TF[interval]
   if (!higherTf) return

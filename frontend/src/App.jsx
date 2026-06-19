@@ -2,9 +2,7 @@ import { useState } from 'react'
 import { RR_CONFIG, BOUNCE_RR } from './services/indicators'
 import { useMarketData } from './hooks/useMarketData'
 import CandleChart from './components/CandleChart'
-import RsiChart from './components/RsiChart'
-import SignalPanel from './components/SignalPanel'
-import NewsPanel from './components/NewsPanel'
+import TrendlineView from './components/TrendlineView'
 import SignalsTable from './components/SignalsTable'
 import BacktestView from './components/BacktestView'
 import BotPanel from './components/BotPanel'
@@ -86,7 +84,7 @@ function ScoreOverlay({ signal }) {
 export default function App() {
   const [symbol,   setSymbol]   = useState('BTCUSDT')
   const [interval, setInterval] = useState('1h')
-  const [view,     setView]     = useState('completo')
+  const [view,     setView]     = useState('simple')
   const { data, loading, error, livePrice } = useMarketData(symbol, interval)
 
   const lastUpdate = data
@@ -138,9 +136,9 @@ export default function App() {
           {/* Toggle Simple / Completo / Señales */}
           <div style={{ display: 'flex', gap: 3, background: '#0d0f1a', borderRadius: 8, padding: 3 }}>
             {[
-              { value: 'simple',   label: 'Simple'   },
-              { value: 'completo', label: 'Completo' },
-              { value: 'senales',  label: 'Señales'  },
+              { value: 'simple',    label: 'Simple'    },
+              { value: 'tendencia', label: 'Tendencia' },
+              { value: 'senales',   label: 'Señales'   },
               { value: 'backtest', label: 'Backtest' },
               { value: 'bot',     label: '🤖 Bot'   },
             ].map(v => (
@@ -211,6 +209,23 @@ export default function App() {
         </div>
       )}
 
+      {/* ─── Vista Tendencia ─────────────────────────────────────────────── */}
+      {view === 'tendencia' && (
+        <div style={{ padding: '0.75rem', height: 'calc(100vh - 56px)' }}>
+          <div style={{
+            position: 'relative', height: '100%',
+            background: '#131722', borderRadius: 10,
+            border: '1px solid #1e2130', overflow: 'hidden',
+          }}>
+            {loading && <Loader text="Cargando datos..." />}
+            {error   && <ErrorMsg text={error} />}
+            {!loading && !error && data && (
+              <TrendlineView candles={data.candles} />
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ─── Vista Señales ───────────────────────────────────────────────── */}
       {view === 'senales' && (
         <div style={{ padding: '0.75rem', height: 'calc(100vh - 56px)', overflow: 'hidden' }}>
@@ -258,59 +273,7 @@ export default function App() {
         </div>
       )}
 
-      {/* ─── Vista Completa ──────────────────────────────────────────────── */}
-      {view === 'completo' && (
-        <div style={{ padding: '0.75rem', height: 'calc(100vh - 56px)', display: 'flex', gap: '0.75rem' }}>
 
-          {/* Columna de gráficos */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem', minWidth: 0 }}>
-            <div style={{ flex: 3, background: '#131722', borderRadius: 10, border: '1px solid #1e2130', overflow: 'hidden' }}>
-              {loading && <Loader text="Cargando datos..." />}
-              {error   && <ErrorMsg text={error} />}
-              {!loading && !error && data && (
-                <CandleChart
-                  candles={data.candles}
-                  indicators={data.indicators}
-                  sr={data.signal.details.sr}
-                  markers={data.markers}
-                  interval={interval}
-                />
-              )}
-            </div>
-
-            <div style={{ flex: 2, background: '#131722', borderRadius: 10, border: '1px solid #1e2130', overflow: 'hidden' }}>
-              {!loading && !error && data && (
-                <RsiChart
-                  rsiData={data.indicators.rsi}
-                  macdData={data.indicators.macd}
-                  macdSignalData={data.indicators.macdSignal}
-                  macdHistogram={data.indicators.macdHistogram}
-                />
-              )}
-            </div>
-          </div>
-
-          {/* Panel derecho */}
-          <div style={{ width: '260px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem', overflowY: 'auto' }}>
-            {!loading && !error && data && (
-              <>
-                <SignalPanel signal={data.signal} lastUpdate={lastUpdate} />
-                <NewsPanel news={data.news} />
-              </>
-            )}
-            {loading && (
-              <div style={{
-                background: '#131722', border: '1px solid #1e2130',
-                borderRadius: 12, flex: 1, display: 'flex',
-                alignItems: 'center', justifyContent: 'center',
-                color: '#4a5568', fontSize: '0.85rem',
-              }}>
-                Cargando...
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   )
 }
