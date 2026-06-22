@@ -21,4 +21,8 @@ if (process.env.NODE_ENV === 'production') {
   app.get('*', (req, res) => res.sendFile(path.join(dist, 'index.html')));
 }
 
-app.listen(PORT, () => console.log(`Servidor en puerto ${PORT}`));
+const scanner = require('./services/scanner')
+app.listen(PORT, () => {
+  console.log(`Servidor en puerto ${PORT}`)
+  scanner.start()
+})
