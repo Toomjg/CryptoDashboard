@@ -216,13 +216,36 @@ function isDebounced(key, interval) {
   return t && (Date.now() - t) < (DEBOUNCE_MS[interval] || DEBOUNCE_MS['1h'])
 }
 
+// ─── Confirmación TF superior: alineación de tendencia (EMA20/50) ─────────────
+// Más estable que buscar un cruce de MACD en el TF superior, que raramente
+// coincide en tiempo con un cruce EMA 9/21 en 5m.
+function isTrendAligned(candles, isLong) {
+  const closes = candles.map(c => c.close)
+  const n      = closes.length - 1
+  const ema20v = ema(closes, 20)
+  const ema50v = ema(closes, 50)
+  const e20 = ema20v[n], e50 = ema50v[n], price = closes[n]
+  if (e20 === null) return true   // sin suficientes datos, no bloquear
+  // LONG: precio sobre EMA20 o EMA20 sobre EMA50
+  if (isLong)  return price > e20 || (e50 !== null && e20 > e50)
+  // SHORT: precio bajo EMA20 o EMA20 bajo EMA50
+  return price < e20 || (e50 !== null && e20 < e50)
+}
+
 // ─── TF superior ─────────────────────────────────────────────────────────────
 const HIGHER_TF = { '5m': '15m', '15m': '1h', '1h': '4h', '4h': '1d' }
+
+// ─── Estado del último scan (para diagnóstico) ────────────────────────────────
+let lastScan = { time: null, result: 'sin datos', detail: null }
+function getLastScan() { return lastScan }
 
 // ─── Poll principal ───────────────────────────────────────────────────────────
 async function poll() {
   const state = trader.getState()
-  if (!state.enabled) return
+  if (!state.enabled) {
+    lastScan = { time: new Date().toISOString(), result: 'bot desactivado', detail: null }
+    return
+  }
 
   const { interval, minStrength } = state
   const symbol = 'BTCUSDT'
@@ -237,7 +260,10 @@ async function poll() {
     }
 
     // 2. No buscar nuevas señales si hay posición abierta
-    if (trader.getState().position) return
+    if (trader.getState().position) {
+      lastScan = { time: new Date().toISOString(), result: 'posición abierta — esperando cierre', detail: { price: ticker.price } }
+      return
+    }
 
     // 3. Velas + marcadores
     const candles = await getKlines(symbol, interval, 300)
@@ -246,21 +272,34 @@ async function poll() {
       : generateMarkersGeneral(candles)
     const active = getActiveSignal(candles, markers)
 
-    if (!active || active.magnitude < minStrength) return
-    if (active.isBounce) return
+    if (!active) {
+      lastScan = { time: new Date().toISOString(), result: 'sin señal activa', detail: { price: ticker.price, markersTotal: markers.length } }
+      return
+    }
+    if (active.magnitude < minStrength) {
+      lastScan = { time: new Date().toISOString(), result: `señal mag=${active.magnitude} < mínimo ${minStrength}`, detail: active }
+      return
+    }
+    if (active.isBounce) {
+      lastScan = { time: new Date().toISOString(), result: 'señal de rebote — ignorada', detail: active }
+      return
+    }
 
     // 4. Debounce
     const key = `${symbol}_${interval}`
-    if (isDebounced(key, interval)) return
+    if (isDebounced(key, interval)) {
+      lastScan = { time: new Date().toISOString(), result: 'debounce activo — señal ya enviada recientemente', detail: active }
+      return
+    }
 
-    // 5. Confirmación TF superior
+    // 5. Confirmación TF superior por alineación de tendencia
     const higherTf = HIGHER_TF[interval]
     if (higherTf) {
       const hCandles = await getKlines(symbol, higherTf, 300)
-      const hMarkers = generateMarkersGeneral(hCandles)
-      const hActive  = getActiveSignal(hCandles, hMarkers)
-      if (!hActive || hActive.isLong !== active.isLong) {
-        console.log(`[SCANNER] ${symbol} ${interval} mag=${active.magnitude} — TF superior no confirma`)
+      const aligned  = isTrendAligned(hCandles, active.isLong)
+      if (!aligned) {
+        lastScan = { time: new Date().toISOString(), result: `${higherTf} no confirma tendencia`, detail: active }
+        console.log(`[SCANNER] ${symbol} ${interval} mag=${active.magnitude} — ${higherTf} tendencia en contra`)
         return
       }
     }
@@ -277,6 +316,7 @@ async function poll() {
 
     if (result.triggered) {
       lastFired[key] = Date.now()
+      lastScan = { time: new Date().toISOString(), result: `TRADE ABIERTO ${active.direction} @ ${entry}`, detail: result.position }
       console.log(`[SCANNER] SEÑAL ${active.direction} ${symbol} ${interval} mag=${active.magnitude} @ ${entry}`)
       sendSignalAlert({
         symbol, interval,
@@ -290,10 +330,12 @@ async function poll() {
         higherOverall: 'confirmado',
       }).catch(() => {})
     } else {
+      lastScan = { time: new Date().toISOString(), result: `rechazado por trader: ${result.reason}`, detail: active }
       console.log(`[SCANNER] Señal rechazada — ${result.reason}`)
     }
 
   } catch (err) {
+    lastScan = { time: new Date().toISOString(), result: `error: ${err.message}`, detail: null }
     console.error('[SCANNER] Error:', err.message)
   }
 }
@@ -304,4 +346,4 @@ function start() {
   setInterval(poll, 60 * 1000)
 }
 
-module.exports = { start }
+module.exports = { start, getLastScan }

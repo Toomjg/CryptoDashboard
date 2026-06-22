@@ -1,5 +1,6 @@
 const router  = require('express').Router()
 const trader  = require('../services/trader')
+const scanner = require('../services/scanner')
 
 // GET /api/bot/status
 router.get('/status', (req, res) => {
@@ -37,6 +38,11 @@ router.delete('/position', (req, res) => {
     return res.json({ ok: true, trade: forcedTrade })
   }
   res.json({ ok: true, trade: closed })
+})
+
+// GET /api/bot/scan  — último resultado del scanner (diagnóstico)
+router.get('/scan', (req, res) => {
+  res.json({ ...trader.getState(), lastScan: scanner.getLastScan() })
 })
 
 module.exports = router
