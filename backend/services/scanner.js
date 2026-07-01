@@ -26,6 +26,57 @@ function atr(highs, lows, closes, period = 14) {
   return result
 }
 
+// ─── Pivot detection ─────────────────────────────────────────────────────────
+function getPivots(candles, lookback = 4) {
+  const highs = [], lows = []
+  for (let i = lookback; i < candles.length - lookback; i++) {
+    let isHigh = true, isLow = true
+    for (let j = 1; j <= lookback; j++) {
+      if (candles[i-j].high >= candles[i].high || candles[i+j].high >= candles[i].high) isHigh = false
+      if (candles[i-j].low  <= candles[i].low  || candles[i+j].low  <= candles[i].low ) isLow  = false
+    }
+    if (isHigh) highs.push({ i, price: candles[i].high })
+    if (isLow)  lows.push({ i, price: candles[i].low  })
+  }
+  return { highs, lows }
+}
+
+// ─── Estructura: HH+HL (bull) | LH+LL (bear) ─────────────────────────────────
+function getTrendStructure(highs, lows, count = 3) {
+  if (highs.length < count || lows.length < count) return 'neutral'
+  const rH = highs.slice(-count), rL = lows.slice(-count)
+  const bull = rH.every((h, i) => i === 0 || h.price > rH[i-1].price) &&
+               rL.every((l, i) => i === 0 || l.price > rL[i-1].price)
+  const bear = rH.every((h, i) => i === 0 || h.price < rH[i-1].price) &&
+               rL.every((l, i) => i === 0 || l.price < rL[i-1].price)
+  return bull ? 'bull' : bear ? 'bear' : 'neutral'
+}
+
+// ─── Contexto S/R ─────────────────────────────────────────────────────────────
+function getSRContext(highs, lows, currentPrice, atrVal) {
+  const tol = atrVal * 1.5
+
+  const nearestRes = highs
+    .filter(p => p.price > currentPrice)
+    .sort((a, b) => a.price - b.price)[0] || null
+  const nearestSup = lows
+    .filter(p => p.price < currentPrice)
+    .sort((a, b) => b.price - a.price)[0] || null
+
+  return {
+    nearestRes,
+    nearestSup,
+    // Comprar cerca de soporte = bueno para LONG
+    longFriendly:  nearestSup && (currentPrice - nearestSup.price) < tol,
+    // Vender cerca de resistencia = bueno para SHORT
+    shortFriendly: nearestRes && (nearestRes.price - currentPrice) < tol,
+    // Resistencia muy encima = techo inmediato, malo para LONG
+    longBlocked:   nearestRes && (nearestRes.price - currentPrice) < tol * 0.3,
+    // Soporte muy abajo = piso inmediato, malo para SHORT
+    shortBlocked:  nearestSup && (currentPrice - nearestSup.price) < tol * 0.3,
+  }
+}
+
 // ─── Estrategia 5m: EMA 9/21 crossover ───────────────────────────────────────
 function generateMarkers5m(candles) {
   const closes  = candles.map(c => c.close)
@@ -233,22 +284,58 @@ async function poll(botId) {
       return
     }
 
+    // ── Ajuste de score por estructura de tendencia y S/R ─────────────────────
+    const highs_ = candles.map(c => c.high)
+    const lows_  = candles.map(c => c.low)
+    const close_ = candles.map(c => c.close)
+    const atrVals   = atr(highs_, lows_, close_)
+    const atrNow    = atrVals.filter(v => v !== null).at(-1) || (ticker.price * 0.01)
+    const pivots    = getPivots(candles)
+    const structure = getTrendStructure(pivots.highs, pivots.lows)
+    const sr        = getSRContext(pivots.highs, pivots.lows, ticker.price, atrNow)
+
+    let score = active.magnitude
+    if (active.isLong) {
+      if (structure === 'bull') score += 1
+      if (structure === 'bear') score -= 1
+      if (sr.longFriendly)     score += 1
+      if (sr.longBlocked)      score -= 2
+    } else {
+      if (structure === 'bear') score += 1
+      if (structure === 'bull') score -= 1
+      if (sr.shortFriendly)    score += 1
+      if (sr.shortBlocked)     score -= 2
+    }
+    score = Math.max(1, Math.min(5, score))
+
+    const structureInfo = `${structure.toUpperCase()} · sup=${sr.nearestSup ? sr.nearestSup.price.toFixed(0) : '—'} · res=${sr.nearestRes ? sr.nearestRes.price.toFixed(0) : '—'}`
+
+    if (score < minStrength) {
+      lastScan[botId] = {
+        time: new Date().toISOString(),
+        result: `mag ${active.magnitude}→${score} < mínimo ${minStrength} [${structureInfo}]`,
+        detail: { active, structure, sr }
+      }
+      return
+    }
+    // ── ────────────────────────────────────────────────────────────────────────
+
     const entry  = candles[candles.length - 1].close
     const result = trader.processSignal(botId, {
       symbol, interval,
       overall:  active.overall,
-      score:    active.magnitude,
+      score,
       entry,
-      strength: String(active.magnitude),
+      strength: String(score),
     })
 
     if (result.triggered) {
-      lastScan[botId] = { time: new Date().toISOString(), result: `TRADE ${active.direction} @ ${entry}`, detail: result.position }
-      console.log(`[SCANNER ${botId}] SEÑAL ${active.direction} mag=${active.magnitude} @ ${entry}`)
+      lastScan[botId] = { time: new Date().toISOString(), result: `TRADE ${active.direction} @ ${entry} [${structureInfo}]`, detail: result.position }
+      console.log(`[SCANNER ${botId}] SEÑAL ${active.direction} mag=${active.magnitude}→${score} @ ${entry} | ${structureInfo}`)
       sendSignalAlert({
         symbol, interval,
         overall:  active.overall,
-        score:    active.magnitude,
+        score,
         entry,
         tp:       result.position.tp,
         sl:       result.position.sl,
