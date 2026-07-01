@@ -1,8 +1,3 @@
-// ─── Parámetros de riesgo por temporalidad (ratio TP/SL siempre 2:1) ─────────
-//   sl:        % de caída desde entrada para stop loss
-//   tp:        % de subida desde entrada para take profit
-//   beTrigger: ganancia necesaria para activar break-even (= sl)
-//   beSl:      nuevo SL al activarse break-even (~20% del sl)
 const RISK_CONFIG = {
   '5m':  { sl: 0.015, tp: 0.030, beTrigger: 0.015, beSl: 0.003 },
   '15m': { sl: 0.025, tp: 0.050, beTrigger: 0.025, beSl: 0.005 },
@@ -13,7 +8,6 @@ const RISK_CONFIG = {
 }
 function getRisk(interval) { return RISK_CONFIG[interval] || RISK_CONFIG['1h'] }
 
-// Duración en ms de cada vela por temporalidad
 const INTERVAL_MS = {
   '5m':  5  * 60 * 1000,
   '15m': 15 * 60 * 1000,
@@ -22,35 +16,44 @@ const INTERVAL_MS = {
   '1d':  24 * 60 * 60 * 1000,
   '1w':  7  * 24 * 60 * 60 * 1000,
 }
-// Timeout escalado al tiempo que necesita cada target para desarrollarse
 const MAX_HOLD_CANDLES = {
   '5m': 48, '15m': 96, '1h': 72, '4h': 30, '1d': 15, '1w': 10,
 }
-
 function getMaxHoldMs(interval) {
-  const ms = INTERVAL_MS[interval] || INTERVAL_MS['15m']
-  const n  = MAX_HOLD_CANDLES[interval] || 15
-  return ms * n
+  return (INTERVAL_MS[interval] || INTERVAL_MS['15m']) * (MAX_HOLD_CANDLES[interval] || 15)
 }
 
-// Estado en memoria — persiste mientras Railway no reinicie el servicio
-const state = {
-  enabled:    true,
-  paperMode:  true,          // true = simulado, false = real (Binance API)
-  capital:    100,           // USD disponible
-  startCapital: 100,
-  riskPct:    5,             // % del capital a arriesgar por trade
-  interval:   '5m',         // temporalidad que activa el bot
-  minStrength: 3,            // magnitud mínima para operar
-  position:   null,          // posición abierta actual
-  trades:     [],            // historial de trades cerrados
+// ─── Bots disponibles ─────────────────────────────────────────────────────────
+const BOT_IDS = ['15m', '1h']
+
+function mkState(interval) {
+  return {
+    enabled:      true,
+    paperMode:    true,
+    capital:      100,
+    startCapital: 100,
+    riskPct:      5,
+    interval,
+    minStrength:  3,
+    position:     null,
+    trades:       [],
+  }
 }
 
-// ─── Configuración ──────────────────────────────────────────────────────────
+const states = Object.fromEntries(BOT_IDS.map(id => [id, mkState(id)]))
 
-function getState() {
+function req(botId) {
+  const s = states[botId]
+  if (!s) throw new Error(`Bot '${botId}' no existe. Disponibles: ${BOT_IDS.join(', ')}`)
+  return s
+}
+
+// ─── Lectura de estado ────────────────────────────────────────────────────────
+function getState(botId) {
+  const state = req(botId)
   const pos = state.position
   let livePnl = null
+
   if (pos && pos._lastPrice) {
     const isLong = pos.direction === 'LONG'
     const pnlPct = isLong
@@ -75,68 +78,64 @@ function getState() {
     }
   }
 
-  const closedTrades = state.trades
-  const wins   = closedTrades.filter(t => t.outcome === 'WIN' || t.outcome === 'BE')
-  const losses = closedTrades.filter(t => t.outcome === 'LOSS')
-  const totalPnl = closedTrades.reduce((s, t) => s + t.pnlUSD, 0)
+  const wins      = state.trades.filter(t => t.outcome === 'WIN' || t.outcome === 'BE')
+  const losses    = state.trades.filter(t => t.outcome === 'LOSS')
+  const totalPnl  = state.trades.reduce((s, t) => s + t.pnlUSD, 0)
 
   return {
-    enabled:     state.enabled,
-    paperMode:   state.paperMode,
-    capital:     +state.capital.toFixed(2),
+    botId,
+    enabled:      state.enabled,
+    paperMode:    state.paperMode,
+    capital:      +state.capital.toFixed(2),
     startCapital: state.startCapital,
-    riskPct:     state.riskPct,
-    interval:    state.interval,
-    minStrength: state.minStrength,
-    position:    pos ? { ...pos, _lastPrice: undefined, livePnl } : null,
+    riskPct:      state.riskPct,
+    interval:     state.interval,
+    minStrength:  state.minStrength,
+    position:     pos ? { ...pos, _lastPrice: undefined, livePnl } : null,
     stats: {
-      totalTrades: closedTrades.length,
+      totalTrades: state.trades.length,
       wins:        wins.length,
       losses:      losses.length,
-      winRate:     closedTrades.length ? +(wins.length / closedTrades.length * 100).toFixed(1) : null,
+      winRate:     state.trades.length ? +(wins.length / state.trades.length * 100).toFixed(1) : null,
       totalPnl:    +totalPnl.toFixed(2),
       totalPnlPct: +((state.capital - state.startCapital) / state.startCapital * 100).toFixed(2),
     },
-    trades: closedTrades.slice(-20).reverse(),  // últimos 20
+    trades: state.trades.slice(-20).reverse(),
   }
 }
 
-function configure({ enabled, paperMode, capital, riskPct, interval, minStrength }) {
-  if (enabled    !== undefined) state.enabled    = enabled
-  if (paperMode  !== undefined) state.paperMode  = paperMode
-  if (riskPct    !== undefined) state.riskPct    = riskPct
-  if (interval   !== undefined) state.interval   = interval
-  if (minStrength !== undefined) state.minStrength = minStrength
+function getAllStates() {
+  return Object.fromEntries(BOT_IDS.map(id => [id, getState(id)]))
+}
 
-  // Cambiar capital solo si no hay posición abierta
+// ─── Configuración ────────────────────────────────────────────────────────────
+function configure(botId, { enabled, paperMode, capital, riskPct, minStrength }) {
+  const state = req(botId)
+  if (enabled     !== undefined) state.enabled     = enabled
+  if (paperMode   !== undefined) state.paperMode   = paperMode
+  if (riskPct     !== undefined) state.riskPct     = riskPct
+  if (minStrength !== undefined) state.minStrength = minStrength
   if (capital !== undefined && !state.position) {
     state.capital      = capital
     state.startCapital = capital
   }
 }
 
-// ─── Lógica de entrada ──────────────────────────────────────────────────────
-
-function processSignal({ symbol, interval, overall, score, entry, strength }) {
-  if (!state.enabled)                    return { triggered: false, reason: 'Bot desactivado' }
-  if (interval !== state.interval)       return { triggered: false, reason: `Bot opera solo en ${state.interval}` }
-  if (state.position)                    return { triggered: false, reason: 'Ya hay una posición abierta' }
+// ─── Entrada ──────────────────────────────────────────────────────────────────
+function processSignal(botId, { symbol, interval, overall, score, entry, strength }) {
+  const state = req(botId)
+  if (!state.enabled)              return { triggered: false, reason: 'Bot desactivado' }
+  if (interval !== state.interval) return { triggered: false, reason: `Bot opera en ${state.interval}` }
+  if (state.position)              return { triggered: false, reason: 'Ya hay posición abierta' }
 
   const numStrength = parseInt(strength || '0', 10)
-  if (numStrength < state.minStrength)   return { triggered: false, reason: `Magnitud ${numStrength} < mínimo ${state.minStrength}` }
+  if (numStrength < state.minStrength) return { triggered: false, reason: `Magnitud ${numStrength} < mínimo ${state.minStrength}` }
 
   const isLong = overall.includes('COMPRA')
   const risk   = getRisk(interval)
+  const tp = isLong ? +(entry * (1 + risk.tp)).toFixed(2) : +(entry * (1 - risk.tp)).toFixed(2)
+  const sl = isLong ? +(entry * (1 - risk.sl)).toFixed(2) : +(entry * (1 + risk.sl)).toFixed(2)
 
-  // SL y TP en % según temporalidad
-  const tp = isLong
-    ? +(entry * (1 + risk.tp)).toFixed(2)
-    : +(entry * (1 - risk.tp)).toFixed(2)
-  const sl = isLong
-    ? +(entry * (1 - risk.sl)).toFixed(2)
-    : +(entry * (1 + risk.sl)).toFixed(2)
-
-  // Tamaño de posición: arriesgar riskPct% del capital sobre el SL de la temporalidad
   const riskUSD      = state.capital * state.riskPct / 100
   const positionSize = Math.min(+(riskUSD / risk.sl).toFixed(2), state.capital)
 
@@ -146,8 +145,7 @@ function processSignal({ symbol, interval, overall, score, entry, strength }) {
     direction: isLong ? 'LONG' : 'SHORT',
     strength:  numStrength,
     entry:     +entry,
-    tp, sl,
-    rr:        2.0,
+    tp, sl, rr: 2.0,
     size:      positionSize,
     openTime:  Date.now(),
     paperMode: state.paperMode,
@@ -156,48 +154,38 @@ function processSignal({ symbol, interval, overall, score, entry, strength }) {
   }
 
   state.position = position
-  console.log(`[BOT] ${state.paperMode ? 'PAPER' : 'REAL'} ${position.direction} ${symbol} @ ${entry} | TP ${tp} (+${risk.tp*100}%) | SL ${sl} (-${risk.sl*100}%) | Size $${positionSize}`)
-
+  console.log(`[BOT ${botId}] ${state.paperMode ? 'PAPER' : 'REAL'} ${position.direction} ${symbol} @ ${entry} | TP ${tp} | SL ${sl} | $${positionSize}`)
   return { triggered: true, position: { ...position, _lastPrice: undefined }, paperMode: state.paperMode }
 }
 
-// ─── Actualización de precio en tiempo real ─────────────────────────────────
-
-function updatePrice(symbol, currentPrice) {
+// ─── Precio en tiempo real ────────────────────────────────────────────────────
+function updatePrice(botId, symbol, currentPrice) {
+  const state = req(botId)
   if (!state.position || state.position.symbol !== symbol) return null
 
   state.position._lastPrice = currentPrice
+  const pos     = state.position
+  const isLong  = pos.direction === 'LONG'
+  const { tp, entry, size, interval: posInterval, openTime } = pos
 
-  const pos = state.position
-  const { direction, tp, entry, size, interval: posInterval, openTime } = pos
-  const isLong = direction === 'LONG'
-
-  // Break-even: cuando la ganancia supera beTrigger, mover SL a beSl
   if (!pos.breakEvenTriggered) {
     const risk    = getRisk(pos.interval)
-    const gainPct = isLong
-      ? (currentPrice - entry) / entry
-      : (entry - currentPrice) / entry
+    const gainPct = isLong ? (currentPrice - entry) / entry : (entry - currentPrice) / entry
     if (gainPct >= risk.beTrigger) {
-      const newSl = isLong
+      pos.sl = isLong
         ? +(entry * (1 + risk.beSl)).toFixed(2)
         : +(entry * (1 - risk.beSl)).toFixed(2)
-      pos.sl = newSl
       pos.breakEvenTriggered = true
-      console.log(`[BOT] BREAK-EVEN ${symbol} — SL movido a ${newSl} (+${risk.beSl * 100}%)`)
+      console.log(`[BOT ${botId}] BREAK-EVEN ${symbol} — SL → ${pos.sl}`)
     }
   }
 
-  const sl = pos.sl  // leer después del posible update de break-even
-
-  // Timeout: si el trade superó el equivalente a maxHold velas, cerrar a precio de mercado
-  const elapsed   = Date.now() - openTime
-  const maxHoldMs = getMaxHoldMs(posInterval)
-
+  const sl      = pos.sl
+  const elapsed = Date.now() - openTime
   let closed = false, outcome = null, exitPrice = currentPrice
 
-  if (elapsed > maxHoldMs) {
-    closed = true; outcome = 'TIMEOUT'; exitPrice = currentPrice
+  if (elapsed > getMaxHoldMs(posInterval)) {
+    closed = true; outcome = 'TIMEOUT'
   } else if (isLong) {
     if (currentPrice >= tp) { closed = true; outcome = 'WIN';  exitPrice = tp }
     if (currentPrice <= sl) { closed = true; outcome = pos.breakEvenTriggered ? 'BE' : 'LOSS'; exitPrice = sl }
@@ -208,43 +196,26 @@ function updatePrice(symbol, currentPrice) {
 
   if (!closed) return null
 
-  const pnlPct = isLong
-    ? (exitPrice - entry) / entry
-    : (entry - exitPrice) / entry
+  const pnlPct = isLong ? (exitPrice - entry) / entry : (entry - exitPrice) / entry
   const pnlUSD = +(size * pnlPct).toFixed(2)
-
-  const trade = {
-    ...state.position,
-    _lastPrice: undefined,
-    exitPrice,
-    outcome,
-    pnlPct: +(pnlPct * 100).toFixed(2),
-    pnlUSD,
-    closeTime: Date.now(),
-  }
+  const trade  = { ...state.position, _lastPrice: undefined, exitPrice, outcome, pnlPct: +(pnlPct * 100).toFixed(2), pnlUSD, closeTime: Date.now() }
 
   state.capital  = +(state.capital + pnlUSD).toFixed(2)
   state.trades.push(trade)
   state.position = null
-
-  console.log(`[BOT] CERRADO ${outcome} ${trade.symbol} | P&L $${pnlUSD} (${(pnlPct * 100).toFixed(2)}%) | Capital: $${state.capital}`)
+  console.log(`[BOT ${botId}] CERRADO ${outcome} ${trade.symbol} | P&L $${pnlUSD} | Capital $${state.capital}`)
   return trade
 }
 
-// Cierra la posición abierta manualmente al precio dado
-function forceClose(price) {
+function forceClose(botId, price) {
+  const state = req(botId)
   if (!state.position) return null
-  return updatePrice(state.position.symbol, price) || (() => {
+  return updatePrice(botId, state.position.symbol, price) || (() => {
     const { direction, entry, size } = state.position
     const isLong = direction === 'LONG'
     const pnlPct = isLong ? (price - entry) / entry : (entry - price) / entry
     const pnlUSD = +(size * pnlPct).toFixed(2)
-    const trade = {
-      ...state.position, _lastPrice: undefined,
-      exitPrice: price, outcome: 'MANUAL',
-      pnlPct: +(pnlPct * 100).toFixed(2), pnlUSD,
-      closeTime: Date.now(),
-    }
+    const trade  = { ...state.position, _lastPrice: undefined, exitPrice: price, outcome: 'MANUAL', pnlPct: +(pnlPct * 100).toFixed(2), pnlUSD, closeTime: Date.now() }
     state.capital  = +(state.capital + pnlUSD).toFixed(2)
     state.trades.push(trade)
     state.position = null
@@ -252,4 +223,4 @@ function forceClose(price) {
   })()
 }
 
-module.exports = { getState, configure, processSignal, updatePrice, forceClose }
+module.exports = { BOT_IDS, getState, getAllStates, configure, processSignal, updatePrice, forceClose }

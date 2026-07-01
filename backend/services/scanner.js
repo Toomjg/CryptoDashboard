@@ -3,7 +3,7 @@ const { ema, rsi, macd, volumeAvg } = require('./indicators')
 const trader = require('./trader')
 const { sendSignalAlert } = require('./telegram')
 
-// ─── ATR (no está en indicators.js del backend) ───────────────────────────────
+// ─── ATR ─────────────────────────────────────────────────────────────────────
 function atr(highs, lows, closes, period = 14) {
   const n = closes.length
   const result = new Array(n).fill(null)
@@ -26,11 +26,10 @@ function atr(highs, lows, closes, period = 14) {
   return result
 }
 
-// ─── Estrategia 5m: EMA 9/21 crossover (igual que frontend) ──────────────────
+// ─── Estrategia 5m: EMA 9/21 crossover ───────────────────────────────────────
 function generateMarkers5m(candles) {
   const closes  = candles.map(c => c.close)
   const volumes = candles.map(c => c.volume)
-
   const ema9v   = ema(closes,   9)
   const ema21v  = ema(closes,  21)
   const ema20v  = ema(closes,  20)
@@ -97,23 +96,16 @@ function generateMarkers5m(candles) {
     strength = Math.min(5, strength)
     if (strength < 3) { lastIdx = i; continue }
 
-    markers.push({
-      time:    candles[i].time,
-      isLong:  freshBull,
-      text:    String(strength),
-      bounce:  isBounce,
-    })
+    markers.push({ time: candles[i].time, isLong: freshBull, text: String(strength), bounce: isBounce })
     lastIdx = i
   }
-
   return markers.slice(-60)
 }
 
-// ─── Estrategia general: MACD crossover (15m+) ───────────────────────────────
+// ─── Estrategia general: MACD crossover (15m, 1h, 4h) ────────────────────────
 function generateMarkersGeneral(candles) {
   const closes  = candles.map(c => c.close)
   const volumes = candles.map(c => c.volume)
-
   const ema50v  = ema(closes, 50)
   const ema200v = ema(closes, 200)
   const rsiV    = rsi(closes, 14)
@@ -138,14 +130,10 @@ function generateMarkersGeneral(candles) {
     const e50 = ema50v[i], e200 = ema200v[i]
     const r = rsiV[i], va = volAvgV[i]
 
-    if (freshBull) {
-      if (r !== null && r >= 65) continue
-      if (e50 !== null && e200 !== null && close < e50 && close < e200) continue
-    }
-    if (freshBear) {
-      if (r !== null && r <= 35) continue
-      if (e50 !== null && e200 !== null && close > e50 && close > e200) continue
-    }
+    if (freshBull && r !== null && r >= 65) continue
+    if (freshBear && r !== null && r <= 35) continue
+    if (freshBull && e50 !== null && e200 !== null && close < e50 && close < e200) continue
+    if (freshBear && e50 !== null && e200 !== null && close > e50 && close > e200) continue
 
     let strength = 1
     if (r !== null) {
@@ -164,22 +152,15 @@ function generateMarkersGeneral(candles) {
     strength = Math.min(5, strength)
     if (strength < 3) { lastIdx = i; continue }
 
-    markers.push({
-      time:   candles[i].time,
-      isLong: freshBull,
-      text:   String(strength),
-      bounce: false,
-    })
+    markers.push({ time: candles[i].time, isLong: freshBull, text: String(strength), bounce: false })
     lastIdx = i
   }
-
   return markers.slice(-60)
 }
 
-// ─── Señal activa: marcador en las últimas 8 velas cerradas ──────────────────
+// ─── Señal activa: marcador fresco en las últimas 8 velas cerradas ────────────
 function getActiveSignal(candles, markers) {
   if (!markers || markers.length === 0) return null
-
   const freshTs = new Set(candles.slice(0, -1).slice(-8).map(c => c.time))
 
   for (let i = markers.length - 1; i >= 0; i--) {
@@ -201,15 +182,17 @@ function getActiveSignal(candles, markers) {
   return null
 }
 
-// ─── Estado del último scan (para diagnóstico) ────────────────────────────────
-let lastScan = { time: null, result: 'sin datos', detail: null }
+// ─── Estado del último scan por bot ──────────────────────────────────────────
+const lastScan = Object.fromEntries(
+  trader.BOT_IDS.map(id => [id, { time: null, result: 'sin datos', detail: null }])
+)
 function getLastScan() { return lastScan }
 
-// ─── Poll principal ───────────────────────────────────────────────────────────
-async function poll() {
-  const state = trader.getState()
+// ─── Poll de un bot ───────────────────────────────────────────────────────────
+async function poll(botId) {
+  const state = trader.getState(botId)
   if (!state.enabled) {
-    lastScan = { time: new Date().toISOString(), result: 'bot desactivado', detail: null }
+    lastScan[botId] = { time: new Date().toISOString(), result: 'bot desactivado' }
     return
   }
 
@@ -217,43 +200,41 @@ async function poll() {
   const symbol = 'BTCUSDT'
 
   try {
-    // 1. Actualizar precio para detectar TP / SL / timeout
+    // Actualizar precio para TP / SL / timeout
     const ticker = await getTicker(symbol)
-    const closed = trader.updatePrice(symbol, ticker.price)
+    const closed = trader.updatePrice(botId, symbol, ticker.price)
     if (closed) {
-      console.log(`[SCANNER] Trade cerrado: ${closed.outcome} ${closed.symbol} P&L $${closed.pnlUSD}`)
+      console.log(`[SCANNER ${botId}] Cerrado ${closed.outcome} P&L $${closed.pnlUSD}`)
       sendSignalAlert({ ...closed, isClose: true }).catch(() => {})
     }
 
-    // 2. No buscar nuevas señales si hay posición abierta
-    if (trader.getState().position) {
-      lastScan = { time: new Date().toISOString(), result: 'posición abierta — esperando cierre', detail: { price: ticker.price } }
+    if (trader.getState(botId).position) {
+      lastScan[botId] = { time: new Date().toISOString(), result: 'posición abierta', detail: { price: ticker.price } }
       return
     }
 
-    // 3. Velas + marcadores
+    // Velas y señal
     const candles = await getKlines(symbol, interval, 300)
     const markers = interval === '5m'
       ? generateMarkers5m(candles)
       : generateMarkersGeneral(candles)
-    const active = getActiveSignal(candles, markers)
+    const active  = getActiveSignal(candles, markers)
 
     if (!active) {
-      lastScan = { time: new Date().toISOString(), result: 'sin señal activa', detail: { price: ticker.price, markersTotal: markers.length } }
+      lastScan[botId] = { time: new Date().toISOString(), result: 'sin señal activa', detail: { price: ticker.price, markersTotal: markers.length } }
       return
     }
     if (active.magnitude < minStrength) {
-      lastScan = { time: new Date().toISOString(), result: `señal mag=${active.magnitude} < mínimo ${minStrength}`, detail: active }
+      lastScan[botId] = { time: new Date().toISOString(), result: `mag=${active.magnitude} < mínimo ${minStrength}`, detail: active }
       return
     }
     if (active.isBounce) {
-      lastScan = { time: new Date().toISOString(), result: 'señal de rebote — ignorada', detail: active }
+      lastScan[botId] = { time: new Date().toISOString(), result: 'rebote ignorado', detail: active }
       return
     }
 
-    // 4. Disparar señal al bot
     const entry  = candles[candles.length - 1].close
-    const result = trader.processSignal({
+    const result = trader.processSignal(botId, {
       symbol, interval,
       overall:  active.overall,
       score:    active.magnitude,
@@ -262,8 +243,8 @@ async function poll() {
     })
 
     if (result.triggered) {
-      lastScan = { time: new Date().toISOString(), result: `TRADE ABIERTO ${active.direction} @ ${entry}`, detail: result.position }
-      console.log(`[SCANNER] SEÑAL ${active.direction} ${symbol} ${interval} mag=${active.magnitude} @ ${entry}`)
+      lastScan[botId] = { time: new Date().toISOString(), result: `TRADE ${active.direction} @ ${entry}`, detail: result.position }
+      console.log(`[SCANNER ${botId}] SEÑAL ${active.direction} mag=${active.magnitude} @ ${entry}`)
       sendSignalAlert({
         symbol, interval,
         overall:  active.overall,
@@ -274,20 +255,22 @@ async function poll() {
         rr:       result.position.rr,
       }).catch(() => {})
     } else {
-      lastScan = { time: new Date().toISOString(), result: `rechazado por trader: ${result.reason}`, detail: active }
-      console.log(`[SCANNER] Señal rechazada — ${result.reason}`)
+      lastScan[botId] = { time: new Date().toISOString(), result: `rechazado: ${result.reason}`, detail: active }
     }
 
   } catch (err) {
-    lastScan = { time: new Date().toISOString(), result: `error: ${err.message}`, detail: null }
-    console.error('[SCANNER] Error:', err.message)
+    lastScan[botId] = { time: new Date().toISOString(), result: `error: ${err.message}` }
+    console.error(`[SCANNER ${botId}] Error:`, err.message)
   }
 }
 
+// ─── Arranque ─────────────────────────────────────────────────────────────────
 function start() {
-  console.log('[SCANNER] Iniciando — poll cada 60s')
-  poll()
-  setInterval(poll, 60 * 1000)
+  console.log(`[SCANNER] Iniciando bots: ${trader.BOT_IDS.join(', ')} — poll cada 60s`)
+  for (const botId of trader.BOT_IDS) {
+    poll(botId)
+    setInterval(() => poll(botId), 60 * 1000)
+  }
 }
 
 module.exports = { start, getLastScan }
