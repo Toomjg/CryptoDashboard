@@ -3,7 +3,14 @@ const { ema, rsi, macd, volumeAvg } = require('./indicators')
 const trader = require('./trader')
 const { sendSignalAlert } = require('./telegram')
 
-// ─── ATR ─────────────────────────────────────────────────────────────────────
+// Timeframes superiores por intervalo de bot
+const HTF_MAP = {
+  '5m':  ['15m', '1h'],
+  '15m': ['1h',  '4h'],
+  '1h':  ['4h',  '1d'],
+}
+
+// ─── ATR ──────────────────────────────────────────────────────────────────────
 function atr(highs, lows, closes, period = 14) {
   const n = closes.length
   const result = new Array(n).fill(null)
@@ -26,7 +33,7 @@ function atr(highs, lows, closes, period = 14) {
   return result
 }
 
-// ─── Pivot detection ─────────────────────────────────────────────────────────
+// ─── Pivot detection (4 velas a cada lado) ───────────────────────────────────
 function getPivots(candles, lookback = 4) {
   const highs = [], lows = []
   for (let i = lookback; i < candles.length - lookback; i++) {
@@ -41,7 +48,7 @@ function getPivots(candles, lookback = 4) {
   return { highs, lows }
 }
 
-// ─── Estructura: HH+HL (bull) | LH+LL (bear) ─────────────────────────────────
+// ─── Estructura de tendencia: HH+HL (bull) | LH+LL (bear) ────────────────────
 function getTrendStructure(highs, lows, count = 3) {
   if (highs.length < count || lows.length < count) return 'neutral'
   const rH = highs.slice(-count), rL = lows.slice(-count)
@@ -52,7 +59,7 @@ function getTrendStructure(highs, lows, count = 3) {
   return bull ? 'bull' : bear ? 'bear' : 'neutral'
 }
 
-// ─── Contexto S/R ─────────────────────────────────────────────────────────────
+// ─── Contexto S/R en el mismo timeframe ──────────────────────────────────────
 function getSRContext(highs, lows, currentPrice, atrVal) {
   const tol = atrVal * 1.5
 
@@ -66,14 +73,71 @@ function getSRContext(highs, lows, currentPrice, atrVal) {
   return {
     nearestRes,
     nearestSup,
-    // Comprar cerca de soporte = bueno para LONG
     longFriendly:  nearestSup && (currentPrice - nearestSup.price) < tol,
-    // Vender cerca de resistencia = bueno para SHORT
     shortFriendly: nearestRes && (nearestRes.price - currentPrice) < tol,
-    // Resistencia muy encima = techo inmediato, malo para LONG
     longBlocked:   nearestRes && (nearestRes.price - currentPrice) < tol * 0.3,
-    // Soporte muy abajo = piso inmediato, malo para SHORT
     shortBlocked:  nearestSup && (currentPrice - nearestSup.price) < tol * 0.3,
+  }
+}
+
+// ─── Fibonacci golden zone (0.382 – 0.618) ───────────────────────────────────
+function getFiboContext(highs, lows, currentPrice, isLong) {
+  if (!highs.length || !lows.length) return null
+
+  if (isLong) {
+    // Impuso alcista: last swing low → last swing high → pullback
+    const lastHigh = highs[highs.length - 1]
+    const prevLow  = lows.filter(l => l.i < lastHigh.i).at(-1)
+    if (!prevLow) return null
+    const range = lastHigh.price - prevLow.price
+    if (range <= 0) return null
+    const r382 = lastHigh.price - range * 0.382
+    const r618 = lastHigh.price - range * 0.618
+    return { swingHigh: lastHigh.price, swingLow: prevLow.price, r382, r618,
+             inGoldenZone: currentPrice >= r618 && currentPrice <= r382 }
+  } else {
+    // Impulso bajista: last swing high → last swing low → pullback
+    const lastLow  = lows[lows.length - 1]
+    const prevHigh = highs.filter(h => h.i < lastLow.i).at(-1)
+    if (!prevHigh) return null
+    const range = prevHigh.price - lastLow.price
+    if (range <= 0) return null
+    const r382 = lastLow.price + range * 0.382
+    const r618 = lastLow.price + range * 0.618
+    return { swingHigh: prevHigh.price, swingLow: lastLow.price, r382, r618,
+             inGoldenZone: currentPrice >= r382 && currentPrice <= r618 }
+  }
+}
+
+// ─── Análisis de un timeframe superior ───────────────────────────────────────
+async function analyzeHTF(symbol, interval, currentPrice) {
+  try {
+    const candles = await getKlines(symbol, interval, 200)
+    const closes  = candles.map(c => c.close)
+    const highs_  = candles.map(c => c.high)
+    const lows_   = candles.map(c => c.low)
+
+    const ema50v  = ema(closes, 50)
+    const ema200v = ema(closes, 200)
+    const ema50   = ema50v.filter(v => v !== null).at(-1)
+    const ema200  = ema200v.filter(v => v !== null).at(-1)
+
+    const atrVals = atr(highs_, lows_, closes)
+    const atrNow  = atrVals.filter(v => v !== null).at(-1) || currentPrice * 0.01
+
+    const pivots    = getPivots(candles)
+    const structure = getTrendStructure(pivots.highs, pivots.lows)
+    const sr        = getSRContext(pivots.highs, pivots.lows, currentPrice, atrNow)
+
+    // Precio cerca de EMA50 = zona de pullback ideal
+    const nearEMA50      = ema50  && Math.abs(currentPrice - ema50)  < atrNow * 1.5
+    const priceAboveEMA50 = ema50  && currentPrice > ema50
+    const priceAboveEMA200 = ema200 && currentPrice > ema200
+
+    return { interval, structure, sr, ema50, ema200, nearEMA50, priceAboveEMA50, priceAboveEMA200, pivots, atrNow }
+  } catch (err) {
+    console.warn(`[HTF ${interval}] Error: ${err.message}`)
+    return null
   }
 }
 
@@ -233,6 +297,41 @@ function getActiveSignal(candles, markers) {
   return null
 }
 
+// ─── Score multi-timeframe ────────────────────────────────────────────────────
+function adjustScore(baseScore, isLong, structure, sr, htfList) {
+  let score = baseScore
+
+  // Mismo TF
+  if (structure === (isLong ? 'bull' : 'bear')) score += 1
+  if (structure === (isLong ? 'bear' : 'bull')) score -= 1
+  if (isLong ? sr.longFriendly  : sr.shortFriendly) score += 1
+  if (isLong ? sr.longBlocked   : sr.shortBlocked)  score -= 2
+
+  // HTF1 — peso medio
+  const htf1 = htfList[0]
+  if (htf1) {
+    if (htf1.structure === (isLong ? 'bull' : 'bear')) score += 1
+    if (htf1.structure === (isLong ? 'bear' : 'bull')) score -= 1
+    // Cerca de EMA50 del HTF1 = zona ideal de pullback
+    if (htf1.nearEMA50) score += 1
+    // Precio del lado equivocado de EMA50 en HTF1
+    if (isLong  && !htf1.priceAboveEMA50)  score -= 1
+    if (!isLong && htf1.priceAboveEMA50)   score -= 1
+  }
+
+  // HTF2 — peso alto (timeframe más alto = más relevante)
+  const htf2 = htfList[1]
+  if (htf2) {
+    if (htf2.structure === (isLong ? 'bull' : 'bear')) score += 2
+    if (htf2.structure === (isLong ? 'bear' : 'bull')) score -= 2
+    // EMA200 HTF2 como filtro de tendencia macro
+    if (isLong  && htf2.priceAboveEMA200)  score += 1
+    if (!isLong && !htf2.priceAboveEMA200) score += 1
+  }
+
+  return Math.max(1, Math.min(5, score))
+}
+
 // ─── Estado del último scan por bot ──────────────────────────────────────────
 const lastScan = Object.fromEntries(
   trader.BOT_IDS.map(id => [id, { time: null, result: 'sin datos', detail: null }])
@@ -251,7 +350,7 @@ async function poll(botId) {
   const symbol = 'BTCUSDT'
 
   try {
-    // Actualizar precio para TP / SL / timeout
+    // Precio en vivo → actualizar TP/SL/timeout
     const ticker = await getTicker(symbol)
     const closed = trader.updatePrice(botId, symbol, ticker.price)
     if (closed) {
@@ -264,19 +363,15 @@ async function poll(botId) {
       return
     }
 
-    // Velas y señal
+    // Velas del intervalo del bot
     const candles = await getKlines(symbol, interval, 300)
     const markers = interval === '5m'
       ? generateMarkers5m(candles)
       : generateMarkersGeneral(candles)
-    const active  = getActiveSignal(candles, markers)
+    const active = getActiveSignal(candles, markers)
 
     if (!active) {
       lastScan[botId] = { time: new Date().toISOString(), result: 'sin señal activa', detail: { price: ticker.price, markersTotal: markers.length } }
-      return
-    }
-    if (active.magnitude < minStrength) {
-      lastScan[botId] = { time: new Date().toISOString(), result: `mag=${active.magnitude} < mínimo ${minStrength}`, detail: active }
       return
     }
     if (active.isBounce) {
@@ -284,42 +379,51 @@ async function poll(botId) {
       return
     }
 
-    // ── Ajuste de score por estructura de tendencia y S/R ─────────────────────
-    const highs_ = candles.map(c => c.high)
-    const lows_  = candles.map(c => c.low)
-    const close_ = candles.map(c => c.close)
-    const atrVals   = atr(highs_, lows_, close_)
+    // ── Contexto del mismo TF ─────────────────────────────────────────────────
+    const h_ = candles.map(c => c.high)
+    const l_ = candles.map(c => c.low)
+    const c_ = candles.map(c => c.close)
+    const atrVals   = atr(h_, l_, c_)
     const atrNow    = atrVals.filter(v => v !== null).at(-1) || (ticker.price * 0.01)
     const pivots    = getPivots(candles)
     const structure = getTrendStructure(pivots.highs, pivots.lows)
     const sr        = getSRContext(pivots.highs, pivots.lows, ticker.price, atrNow)
 
-    let score = active.magnitude
-    if (active.isLong) {
-      if (structure === 'bull') score += 1
-      if (structure === 'bear') score -= 1
-      if (sr.longFriendly)     score += 1
-      if (sr.longBlocked)      score -= 2
-    } else {
-      if (structure === 'bear') score += 1
-      if (structure === 'bull') score -= 1
-      if (sr.shortFriendly)    score += 1
-      if (sr.shortBlocked)     score -= 2
-    }
-    score = Math.max(1, Math.min(5, score))
+    // ── Análisis HTF en paralelo ───────────────────────────────────────────────
+    const htfIntervals = HTF_MAP[interval] || []
+    const htfResults   = await Promise.all(htfIntervals.map(tf => analyzeHTF(symbol, tf, ticker.price)))
+    const [htf1, htf2] = htfResults
 
-    const structureInfo = `${structure.toUpperCase()} · sup=${sr.nearestSup ? sr.nearestSup.price.toFixed(0) : '—'} · res=${sr.nearestRes ? sr.nearestRes.price.toFixed(0) : '—'}`
+    // ── Fibonacci en HTF1 ─────────────────────────────────────────────────────
+    const fibo = htf1 ? getFiboContext(htf1.pivots.highs, htf1.pivots.lows, ticker.price, active.isLong) : null
+
+    // ── Ajuste de score ───────────────────────────────────────────────────────
+    let score = adjustScore(active.magnitude, active.isLong, structure, sr, htfResults)
+
+    // Fibonacci golden zone como bonus adicional
+    if (fibo?.inGoldenZone) {
+      score = Math.min(5, score + 1)
+    }
+
+    // ── Log de contexto ───────────────────────────────────────────────────────
+    const ctxParts = [
+      `base:${structure}`,
+      htf1 ? `${htfIntervals[0]}:${htf1.structure}${htf1.nearEMA50 ? '+EMA50' : ''}` : '',
+      htf2 ? `${htfIntervals[1]}:${htf2.structure}` : '',
+      fibo?.inGoldenZone ? 'FIBO✓' : '',
+    ].filter(Boolean)
+    const ctxStr = ctxParts.join(' · ')
 
     if (score < minStrength) {
       lastScan[botId] = {
         time: new Date().toISOString(),
-        result: `mag ${active.magnitude}→${score} < mínimo ${minStrength} [${structureInfo}]`,
-        detail: { active, structure, sr }
+        result: `mag ${active.magnitude}→${score} < mínimo ${minStrength} [${ctxStr}]`,
+        detail: { active, structure, htf1: htf1 ? { structure: htf1.structure, nearEMA50: htf1.nearEMA50 } : null, htf2: htf2 ? { structure: htf2.structure } : null, fibo }
       }
       return
     }
-    // ── ────────────────────────────────────────────────────────────────────────
 
+    // ── Abrir trade ───────────────────────────────────────────────────────────
     const entry  = candles[candles.length - 1].close
     const result = trader.processSignal(botId, {
       symbol, interval,
@@ -330,8 +434,12 @@ async function poll(botId) {
     })
 
     if (result.triggered) {
-      lastScan[botId] = { time: new Date().toISOString(), result: `TRADE ${active.direction} @ ${entry} [${structureInfo}]`, detail: result.position }
-      console.log(`[SCANNER ${botId}] SEÑAL ${active.direction} mag=${active.magnitude}→${score} @ ${entry} | ${structureInfo}`)
+      lastScan[botId] = {
+        time: new Date().toISOString(),
+        result: `TRADE ${active.direction} @ ${entry} [${ctxStr}]`,
+        detail: result.position
+      }
+      console.log(`[SCANNER ${botId}] SEÑAL ${active.direction} mag=${active.magnitude}→${score} @ ${entry} | ${ctxStr}`)
       sendSignalAlert({
         symbol, interval,
         overall:  active.overall,
@@ -340,6 +448,7 @@ async function poll(botId) {
         tp:       result.position.tp,
         sl:       result.position.sl,
         rr:       result.position.rr,
+        context:  ctxStr,
       }).catch(() => {})
     } else {
       lastScan[botId] = { time: new Date().toISOString(), result: `rechazado: ${result.reason}`, detail: active }
