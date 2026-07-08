@@ -20,7 +20,7 @@ function getMaxHoldMs(interval) {
 }
 
 // ─── Bots disponibles ─────────────────────────────────────────────────────────
-const BOT_IDS = ['15m', '1h']
+const BOT_IDS = ['5m', '15m', '1h']
 
 function mkState(interval) {
   return {

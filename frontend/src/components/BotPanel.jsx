@@ -428,6 +428,7 @@ export default function BotPanel() {
       height: '100%', display: 'flex', gap: 0,
     }}>
       {[
+        { botId: '5m',  label: 'Bot 5m — EMA'   },
         { botId: '15m', label: 'Bot 15m — MACD' },
         { botId: '1h',  label: 'Bot 1H — MACD'  },
       ].map(({ botId, label }, i) => (
