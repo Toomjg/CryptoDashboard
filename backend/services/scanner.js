@@ -297,6 +297,51 @@ function getActiveSignal(candles, markers) {
   return null
 }
 
+// ─── Divergencia RSI ─────────────────────────────────────────────────────────
+// Retorna: +1 (confirma), -1 (diverge en contra), 0 (neutral)
+function checkRSIDivergence(candles, pivots, isLong) {
+  const rsiVals = rsi(candles.map(c => c.close), 14)
+  const MIN_DIFF = 3  // diferencia mínima de RSI para considerar divergencia real
+
+  if (isLong) {
+    // Divergencia bajista en highs = señal LONG se debilita → -1
+    // Confirmación alcista en highs → +1
+    const lastHighs = pivots.highs.slice(-2)
+    if (lastHighs.length >= 2) {
+      const [h1, h2] = lastHighs
+      const r1 = rsiVals[h1.i], r2 = rsiVals[h2.i]
+      if (r1 && r2 && h2.price > h1.price && r2 < r1 - MIN_DIFF) return -1  // div bajista
+      if (r1 && r2 && h2.price > h1.price && r2 > r1 + MIN_DIFF) return  1  // confirmación
+    }
+    // Divergencia alcista en lows = señal LONG se fortalece → +1
+    const lastLows = pivots.lows.slice(-2)
+    if (lastLows.length >= 2) {
+      const [l1, l2] = lastLows
+      const r1 = rsiVals[l1.i], r2 = rsiVals[l2.i]
+      if (r1 && r2 && l2.price < l1.price && r2 > r1 + MIN_DIFF) return  1  // div alcista
+      if (r1 && r2 && l2.price < l1.price && r2 < r1 - MIN_DIFF) return -1  // confirmación bajista
+    }
+  } else {
+    // SHORT: divergencia alcista en lows = señal SHORT se debilita → -1
+    const lastLows = pivots.lows.slice(-2)
+    if (lastLows.length >= 2) {
+      const [l1, l2] = lastLows
+      const r1 = rsiVals[l1.i], r2 = rsiVals[l2.i]
+      if (r1 && r2 && l2.price < l1.price && r2 > r1 + MIN_DIFF) return -1  // div alcista
+      if (r1 && r2 && l2.price < l1.price && r2 < r1 - MIN_DIFF) return  1  // confirmación bajista
+    }
+    // Divergencia bajista en highs = señal SHORT se fortalece → +1
+    const lastHighs = pivots.highs.slice(-2)
+    if (lastHighs.length >= 2) {
+      const [h1, h2] = lastHighs
+      const r1 = rsiVals[h1.i], r2 = rsiVals[h2.i]
+      if (r1 && r2 && h2.price > h1.price && r2 < r1 - MIN_DIFF) return  1  // div bajista
+      if (r1 && r2 && h2.price > h1.price && r2 > r1 + MIN_DIFF) return -1  // confirmación alcista
+    }
+  }
+  return 0
+}
+
 // ─── Score multi-timeframe ────────────────────────────────────────────────────
 function adjustScore(baseScore, isLong, structure, sr, htfList) {
   let score = baseScore
@@ -397,13 +442,25 @@ async function poll(botId) {
     // ── Fibonacci en HTF1 ─────────────────────────────────────────────────────
     const fibo = htf1 ? getFiboContext(htf1.pivots.highs, htf1.pivots.lows, ticker.price, active.isLong) : null
 
+    // ── Divergencia RSI en el mismo TF ────────────────────────────────────────
+    const rsiDiv = checkRSIDivergence(candles, pivots, active.isLong)
+
     // ── Ajuste de score ───────────────────────────────────────────────────────
     let score = adjustScore(active.magnitude, active.isLong, structure, sr, htfResults)
+    if (fibo?.inGoldenZone) score = Math.min(5, score + 1)
+    if (rsiDiv !== 0)       score = Math.max(1, Math.min(5, score + rsiDiv))
 
-    // Fibonacci golden zone como bonus adicional
-    if (fibo?.inGoldenZone) {
-      score = Math.min(5, score + 1)
-    }
+    // ── Tags para el historial ────────────────────────────────────────────────
+    const tags = []
+    if (structure === (active.isLong ? 'bull' : 'bear')) tags.push('struct_ok')
+    if (htf1?.structure === (active.isLong ? 'bull' : 'bear')) tags.push(`${htfIntervals[0]}_ok`)
+    if (htf2?.structure === (active.isLong ? 'bull' : 'bear')) tags.push(`${htfIntervals[1]}_ok`)
+    if (htf1?.nearEMA50)       tags.push('ema50_pullback')
+    if (fibo?.inGoldenZone)    tags.push('fibo_zone')
+    if (rsiDiv > 0)            tags.push('rsi_confirm')
+    if (rsiDiv < 0)            tags.push('rsi_div_warn')
+    if (sr.longFriendly && active.isLong)   tags.push('near_support')
+    if (sr.shortFriendly && !active.isLong) tags.push('near_resistance')
 
     // ── Log de contexto ───────────────────────────────────────────────────────
     const ctxParts = [
@@ -411,6 +468,7 @@ async function poll(botId) {
       htf1 ? `${htfIntervals[0]}:${htf1.structure}${htf1.nearEMA50 ? '+EMA50' : ''}` : '',
       htf2 ? `${htfIntervals[1]}:${htf2.structure}` : '',
       fibo?.inGoldenZone ? 'FIBO✓' : '',
+      rsiDiv > 0 ? 'RSI✓' : rsiDiv < 0 ? 'RSI⚠' : '',
     ].filter(Boolean)
     const ctxStr = ctxParts.join(' · ')
 
@@ -431,6 +489,7 @@ async function poll(botId) {
       score,
       entry,
       strength: String(score),
+      tags,
     })
 
     if (result.triggered) {
