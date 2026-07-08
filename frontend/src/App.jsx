@@ -6,6 +6,7 @@ import TrendlineView from './components/TrendlineView'
 import SignalsTable from './components/SignalsTable'
 import BacktestView from './components/BacktestView'
 import BotPanel from './components/BotPanel'
+import AnalysisView from './components/AnalysisView'
 
 const SYMBOLS   = ['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','XRPUSDT','ADAUSDT','DOGEUSDT','AVAXUSDT','DOTUSDT','LINKUSDT']
 const INTERVALS = [
@@ -139,8 +140,9 @@ export default function App() {
               { value: 'simple',    label: 'Simple'    },
               { value: 'tendencia', label: 'Tendencia' },
               { value: 'senales',   label: 'Señales'   },
-              { value: 'backtest', label: 'Backtest' },
-              { value: 'bot',     label: '🤖 Bot'   },
+              { value: 'backtest',  label: 'Backtest'  },
+              { value: 'bot',      label: '🤖 Bot'    },
+              { value: 'analisis', label: '🔍 Análisis' },
             ].map(v => (
               <button
                 key={v.value}
@@ -273,6 +275,17 @@ export default function App() {
         </div>
       )}
 
+      {/* ─── Vista Análisis ──────────────────────────────────────────────── */}
+      {view === 'analisis' && (
+        <div style={{ padding: '0.75rem', height: 'calc(100vh - 56px)', overflow: 'hidden' }}>
+          <div style={{
+            height: '100%', background: '#131722', borderRadius: 10,
+            border: '1px solid #1e2130', overflow: 'hidden',
+          }}>
+            <AnalysisView />
+          </div>
+        </div>
+      )}
 
     </div>
   )

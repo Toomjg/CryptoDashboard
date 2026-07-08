@@ -150,8 +150,9 @@ function generateMarkers5m(candles) {
   const ema20v  = ema(closes,  20)
   const ema50v  = ema(closes,  50)
   const ema200v = ema(closes, 200)
-  const rsiV    = rsi(closes, 14)
-  const volAvgV = volumeAvg(volumes, 20)
+  const rsiV       = rsi(closes, 14)
+  const volAvg20V  = volumeAvg(volumes, 20)
+  const volAvg100V = volumeAvg(volumes, 100)
 
   const minGap = 6
   const markers = []
@@ -169,7 +170,7 @@ function generateMarkers5m(candles) {
 
     const close = closes[i]
     const e20 = ema20v[i], e50 = ema50v[i], e200 = ema200v[i]
-    const r = rsiV[i], va = volAvgV[i]
+    const r = rsiV[i], va20 = volAvg20V[i], va100 = volAvg100V[i]
 
     let isBounce = false
     if (e200 !== null) {
@@ -207,7 +208,7 @@ function generateMarkers5m(candles) {
       if (freshBull && close > e50) strength++
       if (freshBear && close < e50) strength++
     }
-    if (va !== null && volumes[i] > va * 1.3) strength++
+    if (va20 !== null && volumes[i] > va20 * 1.3 && (va100 === null || volumes[i] > va100 * 1.2)) strength++
     strength = Math.min(5, strength)
     if (strength < 3) { lastIdx = i; continue }
 
@@ -223,9 +224,10 @@ function generateMarkersGeneral(candles) {
   const volumes = candles.map(c => c.volume)
   const ema50v  = ema(closes, 50)
   const ema200v = ema(closes, 200)
-  const rsiV    = rsi(closes, 14)
+  const rsiV       = rsi(closes, 14)
   const { macdLine, signalLine } = macd(closes)
-  const volAvgV = volumeAvg(volumes, 20)
+  const volAvg20V  = volumeAvg(volumes, 20)
+  const volAvg100V = volumeAvg(volumes, 100)
 
   const minGap = 5
   const markers = []
@@ -243,7 +245,7 @@ function generateMarkersGeneral(candles) {
 
     const close = closes[i]
     const e50 = ema50v[i], e200 = ema200v[i]
-    const r = rsiV[i], va = volAvgV[i]
+    const r = rsiV[i], va20 = volAvg20V[i], va100 = volAvg100V[i]
 
     if (freshBull && r !== null && r >= 65) continue
     if (freshBear && r !== null && r <= 35) continue
@@ -263,7 +265,7 @@ function generateMarkersGeneral(candles) {
       if (freshBull && close > e200) strength++
       if (freshBear && close < e200) strength++
     }
-    if (va !== null && volumes[i] > va * 1.5) strength++
+    if (va20 !== null && volumes[i] > va20 * 1.5 && (va100 === null || volumes[i] > va100 * 1.2)) strength++
     strength = Math.min(5, strength)
     if (strength < 3) { lastIdx = i; continue }
 
