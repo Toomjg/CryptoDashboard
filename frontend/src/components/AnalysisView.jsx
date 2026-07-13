@@ -160,7 +160,7 @@ export default function AnalysisView() {
           borderRadius: 10, padding: '1.5rem', flexShrink: 0,
         }}>
           <div style={{ color: '#9c27b0', fontWeight: 700, marginBottom: '1rem', fontSize: '0.82rem', letterSpacing: '0.05em' }}>
-            ANÁLISIS TÉCNICO — GEMINI 2.0 FLASH
+            ANÁLISIS TÉCNICO — GEMINI 1.5 FLASH
           </div>
           <AnalysisText text={analysis} />
         </div>
