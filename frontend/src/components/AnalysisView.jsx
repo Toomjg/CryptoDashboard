@@ -124,7 +124,7 @@ export default function AnalysisView() {
               opacity:     loading ? 0.7 : 1,
             }}
           >
-            {loading ? 'Analizando...' : 'Analizar con Claude'}
+            {loading ? 'Analizando...' : 'Analizar con Gemini'}
           </button>
           <button
             onClick={reset}
@@ -160,7 +160,7 @@ export default function AnalysisView() {
           borderRadius: 10, padding: '1.5rem', flexShrink: 0,
         }}>
           <div style={{ color: '#9c27b0', fontWeight: 700, marginBottom: '1rem', fontSize: '0.82rem', letterSpacing: '0.05em' }}>
-            ANÁLISIS TÉCNICO — CLAUDE OPUS
+            ANÁLISIS TÉCNICO — GEMINI 2.0 FLASH
           </div>
           <AnalysisText text={analysis} />
         </div>

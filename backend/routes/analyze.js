@@ -1,6 +1,6 @@
 const express = require('express')
 const router  = express.Router()
-const Anthropic = require('@anthropic-ai/sdk')
+const { GoogleGenerativeAI } = require('@google/generative-ai')
 
 const SYSTEM_PROMPT = `Eres un analista técnico experto en trading de criptomonedas. Analiza el gráfico proporcionado siguiendo esta metodología de 10 puntos:
 
@@ -22,31 +22,26 @@ router.post('/', async (req, res) => {
     const { image, mimeType = 'image/jpeg' } = req.body
     if (!image) return res.status(400).json({ error: 'Se requiere imagen en base64' })
 
-    const apiKey = process.env.ANTHROPIC_API_KEY
-    if (!apiKey) return res.status(500).json({ error: 'ANTHROPIC_API_KEY no configurada en el servidor' })
+    const apiKey = process.env.GEMINI_API_KEY
+    if (!apiKey) return res.status(500).json({ error: 'GEMINI_API_KEY no configurada en el servidor' })
 
-    const client = new Anthropic({ apiKey })
+    const genAI = new GoogleGenerativeAI(apiKey)
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-2.0-flash',
+      systemInstruction: SYSTEM_PROMPT,
+    })
 
-    const response = await client.messages.create({
-      model: 'claude-opus-4-8',
-      max_tokens: 2000,
-      system: SYSTEM_PROMPT,
-      messages: [{
+    const result = await model.generateContent({
+      contents: [{
         role: 'user',
-        content: [
-          {
-            type: 'image',
-            source: { type: 'base64', media_type: mimeType, data: image },
-          },
-          {
-            type: 'text',
-            text: 'Analiza este gráfico de trading aplicando la metodología de 10 puntos.',
-          },
+        parts: [
+          { text: 'Analiza este gráfico de trading aplicando la metodología de 10 puntos.' },
+          { inlineData: { mimeType, data: image } },
         ],
       }],
     })
 
-    const text = response.content[0]?.text || 'Sin respuesta'
+    const text = result.response.text()
     res.json({ analysis: text })
   } catch (err) {
     console.error('[ANALYZE]', err.message)
