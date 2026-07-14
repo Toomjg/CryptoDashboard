@@ -26,10 +26,10 @@ router.post('/', async (req, res) => {
     if (!apiKey) return res.status(500).json({ error: 'GEMINI_API_KEY no configurada en el servidor' })
 
     const genAI = new GoogleGenerativeAI(apiKey)
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-1.5-flash',
-      systemInstruction: SYSTEM_PROMPT,
-    })
+    const model = genAI.getGenerativeModel(
+      { model: 'gemini-1.5-flash', systemInstruction: SYSTEM_PROMPT },
+      { apiVersion: 'v1' }
+    )
 
     const result = await model.generateContent({
       contents: [{
